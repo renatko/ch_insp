@@ -92,8 +92,8 @@ var (
 	sourceStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5B4FC"))
 	viewStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
 	targetStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#86EFAC"))
-	readMetricStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
-	writeMetricStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#FBBF24"))
+	readMetricStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#6BA9BF"))
+	writeMetricStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#BBA269"))
 	selectionBackground = lipgloss.Color("#334155")
 )
 

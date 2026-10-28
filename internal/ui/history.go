@@ -43,7 +43,7 @@ func mvRateText(ready, available bool, read, written float64, history *clickhous
 		if history == nil {
 			return mutedStyle.Render("read/write: no data")
 		}
-		return mutedStyle.Render("read/write: no data · ") + readMetricStyle.Render("read "+historyBar(history.Read)) + " / " + writeMetricStyle.Render("write "+historyBar(history.Written))
+		return readMetricStyle.Render("read: no data "+historyBar(history.Read)) + " / " + writeMetricStyle.Render("write: no data "+historyBar(history.Written))
 	}
 	readText := fmt.Sprintf("read %.1f rows/s", read)
 	writeText := fmt.Sprintf("write %.1f rows/s", written)

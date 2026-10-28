@@ -12,10 +12,15 @@ import (
 
 // overviewGraph groups views by target and draws each target only once.
 func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color) ([]string, []int) {
+	type row struct {
+		index                             int
+		inputs, inputStats, name, mvStats string
+	}
 	type group struct {
 		target  string
 		key     string
 		indices []int
+		rows    []row
 	}
 	var groups []group
 	indices := make(map[string]int)
@@ -30,16 +35,9 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 		}
 		groups[index].indices = append(groups[index].indices, i)
 	}
-	var lines []string
-	positions := make([]int, len(views))
-	for _, group := range groups {
-		groupStyle := lipgloss.NewStyle().Foreground(colors[group.key])
-		type row struct {
-			index                             int
-			inputs, inputStats, name, mvStats string
-		}
-		var rows []row
-		inputWidth, mvWidth := 0, 0
+	inputWidth, mvWidth, readWidth := 0, 0, 0
+	for groupIndex := range groups {
+		group := &groups[groupIndex]
 		for _, i := range group.indices {
 			view := views[i]
 			flow := clickhouse.InferFlow(view)
@@ -70,12 +68,29 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			}
 			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
 			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
-			mvWidth = maxInt(mvWidth, maxInt(lipgloss.Width(view.Name), lipgloss.Width(mvStats)))
-			rows = append(rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats})
+			if left, _, ok := strings.Cut(mvStats, " / "); ok {
+				readWidth = maxInt(readWidth, lipgloss.Width(left))
+			}
+			group.rows = append(group.rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats})
 		}
-		pad := func(value string, width int) string {
-			return value + strings.Repeat(" ", maxInt(0, width-lipgloss.Width(value)))
+	}
+	pad := func(value string, width int) string {
+		return value + strings.Repeat(" ", maxInt(0, width-lipgloss.Width(value)))
+	}
+	for i := range groups {
+		for j := range groups[i].rows {
+			row := &groups[i].rows[j]
+			if left, right, ok := strings.Cut(row.mvStats, " / "); ok {
+				row.mvStats = pad(left, readWidth) + " / " + right
+			}
+			mvWidth = maxInt(mvWidth, maxInt(lipgloss.Width(row.name), lipgloss.Width(row.mvStats)))
 		}
+	}
+	var lines []string
+	positions := make([]int, len(views))
+	for _, group := range groups {
+		groupStyle := lipgloss.NewStyle().Foreground(colors[group.key])
+		rows := group.rows
 		center := len(rows) / 2
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]

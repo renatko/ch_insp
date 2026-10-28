@@ -467,7 +467,7 @@ func TestMetricColorsInDetailAndOverview(t *testing.T) {
 	overview := clickhouse.OverviewRates{Tables: rates.Tables, Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 3, Written: 2}}}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
 	for _, text := range []string{detail, strings.Join(lines, "\n")} {
-		for _, item := range []struct{ name, color string }{{"inserted:", "38;2;125;211;252"}, {"read ", "38;2;125;211;252"}, {"write ", "38;2;251;191;36"}, {"total:", "38;2;251;191;36"}} {
+		for _, item := range []struct{ name, color string }{{"inserted:", "38;2;107;169;191"}, {"read ", "38;2;107;169;191"}, {"write ", "38;2;187;162;105"}, {"total:", "38;2;187;162;105"}} {
 			pos := strings.Index(text, item.name)
 			if pos < 0 {
 				t.Errorf("missing %s", item.name)
@@ -480,5 +480,33 @@ func TestMetricColorsInDetailAndOverview(t *testing.T) {
 				t.Errorf("%s not using expected color: %q", item.name, text)
 			}
 		}
+	}
+}
+
+func TestOverviewAlignsMetricsAndTargetsAcrossGroups(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "short_mv", Definition: "CREATE MATERIALIZED VIEW short_mv TO target_a AS SELECT * FROM long_source_name"},
+		{Database: "db", Name: "another_mv", Definition: "CREATE MATERIALIZED VIEW another_mv TO target_a AS SELECT * FROM src"},
+		{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO target_b AS SELECT * FROM x"},
+	}
+	rates := clickhouse.OverviewRates{Tables: map[string]float64{"db.target_a": 1, "db.target_b": 2}, Views: map[string]clickhouse.ViewRate{"db.short_mv": {Read: 2, Written: 5}, "db.another_mv": {Read: 12345, Written: 5}, "db.mv": {Read: 12, Written: 6}}, History: map[string]clickhouse.ViewHistory{"db.short_mv": {Read: [5]uint64{1, 2, 3, 4, 5}}}}
+	lines, positions := overviewGraph(views, rates, true, 0, map[string]lipgloss.Color{})
+	col := func(line, pattern string) int {
+		line = ansi.Strip(line)
+		i := strings.Index(line, pattern)
+		if i < 0 {
+			t.Fatalf("missing %q in %q", pattern, line)
+		}
+		return lipgloss.Width(line[:i])
+	}
+	readCol, writeCol := col(lines[positions[0]+1], "read "), col(lines[positions[0]+1], "write ")
+	for _, pos := range positions {
+		if col(lines[pos+1], "read ") != readCol || col(lines[pos+1], "write ") != writeCol {
+			t.Fatalf("unaligned metrics:\n%s", strings.Join(lines, "\n"))
+		}
+	}
+	a, b := positions[1], positions[2]
+	if col(lines[a], "target_a") != col(lines[b], "target_b") || col(lines[a+1], "total:") != col(lines[b+1], "total:") {
+		t.Fatalf("unaligned targets:\n%s", strings.Join(lines, "\n"))
 	}
 }
