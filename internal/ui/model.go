@@ -64,14 +64,15 @@ type model struct {
 }
 
 var (
-	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC")).Bold(true)
-	mutedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
-	activeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0F172A")).Background(lipgloss.Color("#7DD3FC")).Bold(true)
-	borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#334155")).Padding(0, 1)
-	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FCA5A5"))
-	sourceStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5B4FC"))
-	viewStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
-	targetStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#86EFAC"))
+	accentStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC")).Bold(true)
+	mutedStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
+	activeStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#0F172A")).Background(lipgloss.Color("#7DD3FC")).Bold(true)
+	borderStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#334155")).Padding(0, 1)
+	errorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#FCA5A5"))
+	sourceStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5B4FC"))
+	viewStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
+	targetStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#86EFAC"))
+	selectionBackground = lipgloss.Color("#334155")
 )
 
 // Run starts the interactive materialized view browser.
@@ -507,12 +508,16 @@ func (m *model) keepOverviewSelectionVisible() {
 }
 
 func (m model) renderOverview(width int) string {
-	lines, _ := m.overviewLines()
+	lines, positions := m.overviewLines()
 	visible := maxInt(1, m.height-7)
 	start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
 	end := minInt(len(lines), start+visible)
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
+		if m.selected < len(positions) && (i == positions[m.selected] || i == positions[m.selected]+1) {
+			padding := maxInt(0, width-lipgloss.Width(lines[i]))
+			lines[i] += lipgloss.NewStyle().Background(selectionBackground).Render(strings.Repeat(" ", padding))
+		}
 	}
 	footer := "[f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))

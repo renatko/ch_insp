@@ -49,6 +49,7 @@ group has its own color, including its inputs and
 views. Colors remain stable when filtering; with more than eight groups the
 palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The
+selected flow and its statistics are highlighted across the overview. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 

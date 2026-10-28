@@ -83,9 +83,15 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 		}
 		for j, row := range rows {
 			positions[row.index] = len(lines)
-			marker := "  "
+			rowStyle, statsStyle, markerStyle := groupStyle, mutedStyle, accentStyle
 			if row.index == selected {
-				marker = accentStyle.Render("› ")
+				rowStyle = rowStyle.Background(selectionBackground)
+				statsStyle = statsStyle.Foreground(lipgloss.Color("#E2E8F0")).Background(selectionBackground)
+				markerStyle = markerStyle.Background(selectionBackground)
+			}
+			marker := rowStyle.Render("  ")
+			if row.index == selected {
+				marker = markerStyle.Render("› ")
 			}
 			branch := "──┤  "
 			switch {
@@ -100,19 +106,19 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			case j == len(rows)-1:
 				branch = "──┘  "
 			}
-			line := marker + groupStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + groupStyle.Render(" ─▶ ") + groupStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
+			line := marker + rowStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + rowStyle.Render(" ─▶ ") + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + rowStyle.Render(" "+branch)
 			if j == center {
-				line += " " + groupStyle.Render(shortName(group.target))
+				line += rowStyle.Render(" " + shortName(group.target))
 			}
 			lines = append(lines, line)
-			stats := "  " + mutedStyle.Render(pad(row.inputStats, inputWidth)+"    "+pad(row.mvStats, mvWidth)+" ")
+			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth) + " ")
 			if j < len(rows)-1 {
-				stats += groupStyle.Render("  │  ")
+				stats += rowStyle.Render("  │  ")
 			} else {
-				stats += "     "
+				stats += statsStyle.Render("     ")
 			}
 			if j == center {
-				stats += " " + mutedStyle.Render(total)
+				stats += statsStyle.Render(" " + total)
 			}
 			lines = append(lines, stats)
 		}

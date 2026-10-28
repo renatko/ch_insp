@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
 
 func TestDiagramConnectsMultipleSources(t *testing.T) {
@@ -228,5 +229,25 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 	nameLine, statsLine = ansi.Strip(lines[starts[1]]), ansi.Strip(lines[starts[1]+1])
 	if col(nameLine, "destination") != col(statsLine, "total: 6.0 rows/s") {
 		t.Fatalf("target statistic is not aligned:\n%s\n%s", nameLine, statsLine)
+	}
+}
+
+func TestOverviewHighlightsBothSelectedLinesAcrossViewport(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+	m := model{database: "db", width: 80, height: 30, overview: true, selected: 1, overviewColumn: 8, views: []clickhouse.View{
+		{Database: "db", Name: "one", Definition: "CREATE MATERIALIZED VIEW one TO dst AS SELECT * FROM src"},
+		{Database: "db", Name: "two", Definition: "CREATE MATERIALIZED VIEW two TO dst AS SELECT * FROM src"},
+	}}
+	_, positions := m.overviewLines()
+	lines := strings.Split(m.renderOverview(m.width), "\n")
+	for _, i := range []int{positions[1], positions[1] + 1} {
+		if !strings.Contains(lines[i], "48;2;51;65;85") || lipgloss.Width(lines[i]) != m.width {
+			t.Fatalf("line %d is not highlighted to viewport width: %q", i, lines[i])
+		}
+	}
+	if strings.Contains(lines[positions[0]], "48;2;51;65;85") {
+		t.Fatal("unselected row is highlighted")
 	}
 }
