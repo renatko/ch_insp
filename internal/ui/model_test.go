@@ -7,6 +7,7 @@ import (
 	"chinspector/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestDiagramConnectsMultipleSources(t *testing.T) {
@@ -106,10 +107,10 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 			t.Errorf("overview missing %q:\n%s", value, joined)
 		}
 	}
-	if len(starts) != 2 || starts[1]-starts[0] != 12 {
+	if len(starts) != 2 || starts[1]-starts[0] != 3 {
 		t.Fatalf("unexpected view positions: %v", starts)
 	}
-	for _, value := range []string{"╭", "╰", "▶", "│"} {
+	for _, value := range []string{"─▶", "────▶"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview diagram missing %q", value)
 		}
@@ -135,7 +136,7 @@ func TestOverviewSharesTargetAndShowsTotalRate(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.destination": 9}, Views: map[string]clickhouse.ViewRate{"db.first_mv": {Written: 1}, "db.second_mv": {Written: 2}}}}
 	lines, starts := m.overviewLines()
 	joined := strings.Join(lines, "\n")
-	if strings.Count(joined, "│ destination") != 1 {
+	if strings.Count(joined, "destination") != 1 {
 		t.Fatalf("expected one target box:\n%s", joined)
 	}
 	for _, want := range []string{"first_mv", "second_mv", "▶", "total: 9.0 rows/s"} {
@@ -158,7 +159,7 @@ func TestOverviewRepeatsSourceAcrossViewsAndTargets(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.shared": 12}}}
 	lines, _ := m.overviewLines()
 	joined := strings.Join(lines, "\n")
-	if strings.Count(joined, "│ shared") != 2 {
+	if strings.Count(joined, "shared") != 2 {
 		t.Fatalf("source should appear once per view:\n%s", joined)
 	}
 	if strings.Count(joined, "▶") != 4 {
@@ -204,5 +205,28 @@ func TestOverviewColorsAreSharedAndStableAcrossFiltering(t *testing.T) {
 	}
 	if len(colors) != 3 {
 		t.Fatalf("expected distinct group for internal storage: %#v", colors)
+	}
+}
+
+func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
+	m := model{database: "db", overviewReady: true, views: []clickhouse.View{
+		{Database: "db", Name: "view_one", Definition: "CREATE MATERIALIZED VIEW view_one TO destination AS SELECT * FROM src JOIN users ON 1"},
+		{Database: "db", Name: "view_two", Definition: "CREATE MATERIALIZED VIEW view_two TO destination AS SELECT * FROM src"},
+	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.src": 12, "db.users": 3, "db.destination": 6}, Views: map[string]clickhouse.ViewRate{"db.view_one": {Read: 9, Written: 5}}}}
+	lines, starts := m.overviewLines()
+	nameLine, statsLine := ansi.Strip(lines[starts[0]]), ansi.Strip(lines[starts[0]+1])
+	col := func(line, value string) int {
+		i := strings.Index(line, value)
+		if i < 0 {
+			t.Fatalf("missing %q in %q", value, line)
+		}
+		return lipgloss.Width(line[:i])
+	}
+	if col(nameLine, "src") != col(statsLine, "parts: 12.0 rows/s") || col(nameLine, "users") != col(statsLine, "parts: 3.0 rows/s") || col(nameLine, "view_one") != col(statsLine, "read 9.0 / write 5.0 rows/s") {
+		t.Fatalf("statistics are not below their nodes:\n%s\n%s", nameLine, statsLine)
+	}
+	nameLine, statsLine = ansi.Strip(lines[starts[1]]), ansi.Strip(lines[starts[1]+1])
+	if col(nameLine, "destination") != col(statsLine, "total: 6.0 rows/s") {
+		t.Fatalf("target statistic is not aligned:\n%s\n%s", nameLine, statsLine)
 	}
 }

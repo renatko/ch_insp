@@ -34,78 +34,91 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 	positions := make([]int, len(views))
 	for _, group := range groups {
 		groupStyle := lipgloss.NewStyle().Foreground(colors[group.key])
-		var block []string
-		var connections []int
-		groupWidth := 0
+		type row struct {
+			index                             int
+			inputs, inputStats, name, mvStats string
+		}
+		var rows []row
+		inputWidth, mvWidth := 0, 0
 		for _, i := range group.indices {
 			view := views[i]
-			positions[i] = len(lines) + len(block)
+			flow := clickhouse.InferFlow(view)
+			sources := flow.Sources
+			if len(sources) == 0 {
+				sources = []string{"? unknown source"}
+			}
+			var names, stats []string
+			for _, source := range sources {
+				name := shortName(source)
+				stat := "parts: no data"
+				if !ready {
+					stat = "parts: loading"
+				} else if value, ok := rates.Tables[source]; ok {
+					stat = fmt.Sprintf("parts: %.1f rows/s", value)
+				}
+				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))
+				names = append(names, name+strings.Repeat(" ", width-lipgloss.Width(name)))
+				stats = append(stats, stat+strings.Repeat(" ", width-lipgloss.Width(stat)))
+			}
+			inputs, inputStats := strings.Join(names, " + "), strings.Join(stats, "   ")
+			mvStats := "read/write: no data"
+			if !ready {
+				mvStats = "read/write: loading"
+			} else if rate, ok := rates.Views[view.Database+"."+view.Name]; ok {
+				mvStats = fmt.Sprintf("read %.1f / write %.1f rows/s", rate.Read, rate.Written)
+			}
+			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
+			mvWidth = maxInt(mvWidth, maxInt(lipgloss.Width(view.Name), lipgloss.Width(mvStats)))
+			rows = append(rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats})
+		}
+		pad := func(value string, width int) string {
+			return value + strings.Repeat(" ", maxInt(0, width-lipgloss.Width(value)))
+		}
+		center := len(rows) / 2
+		total := "total: no data"
+		if !ready {
+			total = "total: loading"
+		} else if value, ok := rates.Tables[group.target]; ok {
+			total = fmt.Sprintf("total: %.1f rows/s", value)
+		}
+		for j, row := range rows {
+			positions[row.index] = len(lines)
 			marker := "  "
-			if i == selected {
+			if row.index == selected {
 				marker = accentStyle.Render("› ")
 			}
-			block = append(block, marker+groupStyle.Bold(true).Render(view.Name))
-			viewRates := clickhouse.Rates{Tables: rates.Tables}
-			if rate, ok := rates.Views[view.Database+"."+view.Name]; ok {
-				viewRates.MVAvailable, viewRates.MVRead, viewRates.MVWritten = true, rate.Read, rate.Written
-			}
-			flowLines, middle := diagramFlowLinesStyled(view, viewRates, ready, false, groupStyle, groupStyle, groupStyle, groupStyle)
-			connections = append(connections, len(block)+middle)
-			for _, line := range flowLines {
-				line = "  " + line
-				groupWidth = maxInt(groupWidth, lipgloss.Width(line))
-				block = append(block, line)
-			}
-			block = append(block, "")
-		}
-		first, last := connections[0], connections[len(connections)-1]
-		center := connections[len(connections)/2]
-		totalMetric := "total: no data"
-		if !ready {
-			totalMetric = "total: loading"
-		} else {
-			if value, ok := rates.Tables[group.target]; ok {
-				totalMetric = fmt.Sprintf("total: %.1f rows/s", value)
-			}
-		}
-		target := diagramBox("TARGET", shortName(group.target), totalMetric, 0, 0, false, groupStyle)
-		for row, content := range block {
-			isConnection := false
-			for _, pos := range connections {
-				if pos == row {
-					isConnection = true
-					break
-				}
-			}
-			fill := " "
-			if isConnection {
-				fill = "─"
-			}
-			content += groupStyle.Render(strings.Repeat(fill, maxInt(0, groupWidth-lipgloss.Width(content))))
-			branch := "     "
+			branch := "──┤  "
 			switch {
-			case first == last && row == center:
+			case len(rows) == 1:
 				branch = "────▶"
-			case row == center && row == last:
+			case j == center && j == len(rows)-1:
 				branch = "──┴─▶"
-			case row == center:
+			case j == center:
 				branch = "──┼─▶"
-			case row == first:
+			case j == 0:
 				branch = "──┐  "
-			case row == last:
+			case j == len(rows)-1:
 				branch = "──┘  "
-			case isConnection:
-				branch = "──┤  "
-			case row > first && row < last:
-				branch = "  │  "
 			}
-			content += groupStyle.Render(branch)
-			if row >= center-2 && row < center+3 {
-				content += target[row-(center-2)]
+			line := marker + groupStyle.Render(pad(row.inputs, inputWidth)+" ─▶ "+pad(row.name, mvWidth)+" "+branch)
+			if j == center {
+				line += " " + groupStyle.Bold(true).Render(shortName(group.target))
 			}
-			lines = append(lines, content)
+			lines = append(lines, line)
+			stats := "  " + mutedStyle.Render(pad(row.inputStats, inputWidth)+"    "+pad(row.mvStats, mvWidth)+" ")
+			if j < len(rows)-1 {
+				stats += groupStyle.Render("  │  ")
+			} else {
+				stats += "     "
+			}
+			if j == center {
+				stats += " " + mutedStyle.Render(total)
+			}
+			lines = append(lines, stats)
 		}
+		lines = append(lines, "")
 	}
+
 	return lines, positions
 }
 

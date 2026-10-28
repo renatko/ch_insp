@@ -501,7 +501,7 @@ func (m *model) keepOverviewSelectionVisible() {
 	line := starts[m.selected]
 	if line < m.overviewScroll {
 		m.overviewScroll = line
-	} else if line+5 >= m.overviewScroll+visible {
+	} else if line+1 >= m.overviewScroll+visible {
 		m.overviewScroll = line
 	}
 }
