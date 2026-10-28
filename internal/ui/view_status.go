@@ -78,7 +78,7 @@ func (m model) failureLines() []string {
 		f := m.failures[m.failureSelected]
 		lines = append(lines, fmt.Sprintf("%s  %s  code %d", f.Time.Format("2006-01-02 15:04:05"), f.Status, f.Code), "Query ID: "+f.QueryID, "", "Message:")
 		lines = append(lines, strings.Split(f.Message, "\n")...)
-		return append(lines, "", mutedStyle.Render("Enter: list · PgUp/PgDn: scroll"))
+		return append(lines, "", mutedStyle.Render("Enter/Esc: list · PgUp/PgDn: scroll"))
 	}
 	for i, f := range m.failures {
 		message := strings.ReplaceAll(strings.ReplaceAll(f.Message, "\n", " "), "\r", " ")

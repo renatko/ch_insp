@@ -85,7 +85,7 @@ type model struct {
 	dependencyReturnTargetExplicit string
 	dependencyMessage              string
 	failuresMode                   bool
-	failuresReturnOverview         bool
+	failuresReturnScreen           string
 	failuresLoading                bool
 	failuresError                  error
 	failures                       []clickhouse.ViewFailure
@@ -629,6 +629,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "esc":
 			if m.failuresMode {
+				if m.failureDetail {
+					m.failureDetail = false
+					m.lineOffset = 0
+					break
+				}
 				return m.Update(mouseKey("e"))
 			}
 			if m.target {
@@ -641,12 +646,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.failuresMode && !m.overview {
 				m.cancelColumns()
 				m.failuresMode = false
-				m.overview = m.failuresReturnOverview
-				m.failuresReturnOverview = false
+				previous := m.failuresReturnScreen
+				m.failuresReturnScreen = ""
 				m.lineOffset = 0
+				switch previous {
+				case "overview":
+					m.overview = true
+				case "target":
+					m.target = true
+					return m, m.loadTarget()
+				case "columns":
+					m.columns = true
+					return m, m.loadColumns()
+				case "definition":
+					m.definition = true
+				case "dependencies":
+					m.dependencies = true
+				}
 				break
 			}
-			m.failuresReturnOverview = m.overview
+			m.failuresReturnScreen = "diagram"
+			switch {
+			case m.overview:
+				m.failuresReturnScreen = "overview"
+			case m.target:
+				m.failuresReturnScreen = "target"
+			case m.columns:
+				m.failuresReturnScreen = "columns"
+			case m.definition:
+				m.failuresReturnScreen = "definition"
+			case m.dependencies:
+				m.failuresReturnScreen = "dependencies"
+			}
 			m.failuresMode = true
 			m.dependencies = false
 			m.target = false

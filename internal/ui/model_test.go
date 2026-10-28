@@ -666,6 +666,11 @@ func TestViewStatusAndErrorNavigation(t *testing.T) {
 	}
 	next, _ = m.Update(mouseKey("esc"))
 	m = next.(model)
+	if !m.failuresMode || m.failureDetail {
+		t.Fatal("did not return to error list")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
 	if !m.overview || m.failuresMode {
 		t.Fatal("did not return to overview")
 	}
@@ -851,5 +856,51 @@ func TestDependencyTableColumnsAndReturn(t *testing.T) {
 	m = next.(model)
 	if !m.overview || m.dependencies {
 		t.Fatal("did not return to overview")
+	}
+}
+
+func TestErrorsReturnToPreviousScreen(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	for _, kind := range []string{"columns", "target", "definition", "dependencies"} {
+		t.Run(kind, func(t *testing.T) {
+			m := model{width: 120, height: 25, database: "db", views: views, allViews: views}
+			switch kind {
+			case "columns":
+				m.columns = true
+			case "target":
+				m.target = true
+			case "definition":
+				m.definition = true
+			case "dependencies":
+				m.dependencies = true
+				m.dependencyTable = "db.src"
+			}
+			next, cmd := m.Update(mouseKey("e"))
+			m = next.(model)
+			if !m.failuresMode || cmd == nil {
+				t.Fatal("errors did not open")
+			}
+			next, cmd = m.Update(mouseKey("esc"))
+			m = next.(model)
+			switch kind {
+			case "columns":
+				if !m.columns || !m.columnsLoading || cmd == nil {
+					t.Fatal("column screen not restored")
+				}
+			case "target":
+				if !m.target || !m.targetLoading || cmd == nil {
+					t.Fatal("target screen not restored")
+				}
+			case "definition":
+				if !m.definition {
+					t.Fatal("SQL screen not restored")
+				}
+			case "dependencies":
+				if !m.dependencies || m.dependencyTable != "db.src" {
+					t.Fatal("dependency screen not restored")
+				}
+			}
+			m.cancelColumns()
+		})
 	}
 }
