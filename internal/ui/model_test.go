@@ -360,3 +360,36 @@ func TestColumnDetailsIgnoreEarlierRequestForSameView(t *testing.T) {
 	}
 	m.cancelColumns()
 }
+
+func TestTargetScreenNavigationAndStaleResult(t *testing.T) {
+	m := model{width: 120, height: 30, database: "db", overview: true, viewRevision: 3, views: []clickhouse.View{{Database: "db", Name: "first"}, {Database: "db", Name: "second"}}}
+	next, cmd := m.Update(mouseKey("t"))
+	m = next.(model)
+	if !m.target || m.overview || !m.targetLoading || cmd == nil {
+		t.Fatal("target screen did not load from overview")
+	}
+	data := clickhouse.TargetColumns{Database: "db", Table: "out", Views: []string{"db.first", "other.second"}, Columns: []clickhouse.TargetColumn{{Name: "id", Type: "UInt64", Writers: []clickhouse.TargetWriter{{View: "db.first", Expression: "e.id", Inputs: []string{"events.id (UInt64)"}}, {View: "other.second", Expression: "o.id"}}}, {Name: "extra", Type: "String", DefaultKind: "DEFAULT", DefaultExpression: "'x'"}}}
+	next, _ = m.Update(targetLoadedMsg{key: "db\x00first", revision: 3, request: m.columnsRequest, data: data})
+	m = next.(model)
+	content := strings.Join(m.detailLines(), "\n")
+	for _, v := range []string{"TARGET TABLE", "out", "id (UInt64)", "first", "other.second", "events.id (UInt64)", "DEFAULT 'x'", "No identified MV output", "direct inserts"} {
+		if !strings.Contains(content, v) {
+			t.Errorf("missing %q: %s", v, content)
+		}
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	if m.selected != 1 || !m.targetLoading || cmd == nil {
+		t.Fatal("new target was not loaded")
+	}
+	next, _ = m.Update(targetLoadedMsg{key: "db\x00first", revision: 3, request: m.columnsRequest - 1, data: data})
+	m = next.(model)
+	if !m.targetLoading {
+		t.Fatal("stale target result was accepted")
+	}
+	next, _ = m.Update(mouseKey("t"))
+	m = next.(model)
+	if m.target || !m.overview {
+		t.Fatal("did not return to overview")
+	}
+}

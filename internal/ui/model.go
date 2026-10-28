@@ -37,44 +37,49 @@ type columnsLoadedMsg struct {
 }
 
 type model struct {
-	dsn              string
-	databases        []string
-	database         string
-	allViews         []clickhouse.View
-	choosingDatabase bool
-	databaseCursor   int
-	filtering        bool
-	filterSource     []string
-	filterTarget     []string
-	draftSource      []string
-	draftTarget      []string
-	filterField      int
-	filterCursors    [2]int
-	viewRevision     int
-	views            []clickhouse.View
-	selected         int
-	loading          bool
-	err              error
-	width            int
-	height           int
-	definition       bool
-	columns          bool
-	columnsLoading   bool
-	columnsData      clickhouse.ColumnLineage
-	columnsError     error
-	columnsCancel    context.CancelFunc
-	columnsRequest   uint64
-	lineOffset       int
-	columnOffset     int
-	rates            clickhouse.Rates
-	metricsBusy      bool
-	metricsReady     bool
-	overview         bool
-	overviewBusy     bool
-	overviewReady    bool
-	overviewRates    clickhouse.OverviewRates
-	overviewScroll   int
-	overviewColumn   int
+	dsn                  string
+	databases            []string
+	database             string
+	allViews             []clickhouse.View
+	choosingDatabase     bool
+	databaseCursor       int
+	filtering            bool
+	filterSource         []string
+	filterTarget         []string
+	draftSource          []string
+	draftTarget          []string
+	filterField          int
+	filterCursors        [2]int
+	viewRevision         int
+	views                []clickhouse.View
+	selected             int
+	loading              bool
+	err                  error
+	width                int
+	height               int
+	definition           bool
+	columns              bool
+	target               bool
+	targetReturnOverview bool
+	targetLoading        bool
+	targetData           clickhouse.TargetColumns
+	targetError          error
+	columnsLoading       bool
+	columnsData          clickhouse.ColumnLineage
+	columnsError         error
+	columnsCancel        context.CancelFunc
+	columnsRequest       uint64
+	lineOffset           int
+	columnOffset         int
+	rates                clickhouse.Rates
+	metricsBusy          bool
+	metricsReady         bool
+	overview             bool
+	overviewBusy         bool
+	overviewReady        bool
+	overviewRates        clickhouse.OverviewRates
+	overviewScroll       int
+	overviewColumn       int
 }
 
 var (
@@ -153,6 +158,7 @@ func (m *model) cancelColumns() {
 		m.columnsCancel = nil
 	}
 	m.columnsLoading = false
+	m.targetLoading = false
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -180,8 +186,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overviewBusy = true
 			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 		}
-		if msg.err == nil && !m.overview && m.columns && len(m.views) > 0 {
-			cmd := m.loadColumns()
+		if msg.err == nil && !m.overview && (m.columns || m.target) && len(m.views) > 0 {
+			cmd := m.columnCmdIfActive()
 			if !m.metricsBusy {
 				m.metricsBusy = true
 				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected]))
@@ -211,6 +217,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overviewBusy = false
 		if msg.database == m.database && msg.revision == m.viewRevision {
 			m.overviewRates, m.overviewReady = msg.rates, true
+		}
+	case targetLoadedMsg:
+		if m.target && !m.overview && len(m.views) > 0 && msg.request == m.columnsRequest && msg.revision == m.viewRevision && msg.key == m.views[m.selected].Database+"\x00"+m.views[m.selected].Name {
+			m.targetLoading, m.targetData, m.targetError = false, msg.data, msg.err
+			m.columnsCancel = nil
 		}
 	case columnsLoadedMsg:
 		if m.columns && !m.overview && len(m.views) > 0 && msg.request == m.columnsRequest && msg.revision == m.viewRevision && msg.key == m.views[m.selected].Database+"\x00"+m.views[m.selected].Name {
@@ -271,6 +282,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lineOffset, m.columnOffset = 0, 0
 			return m, loadViews(m.dsn)
 		case "o":
+			if m.target {
+				m.cancelColumns()
+				m.target = false
+			}
 			m.overview = !m.overview
 			if m.overview {
 				m.cancelColumns()
@@ -325,8 +340,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
-				if m.columns {
-					cmd := m.loadColumns()
+				if m.columns || m.target {
+					cmd := m.columnCmdIfActive()
 					return m, cmd
 				}
 			}
@@ -340,16 +355,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
-				if m.columns {
-					cmd := m.loadColumns()
+				if m.columns || m.target {
+					cmd := m.columnCmdIfActive()
 					return m, cmd
 				}
 			}
+		case "esc":
+			if m.target {
+				return m.Update(mouseKey("t"))
+			}
+		case "t":
+			if len(m.views) == 0 || m.loading || m.err != nil {
+				break
+			}
+			if m.target {
+				m.cancelColumns()
+				m.target = false
+				m.overview = m.targetReturnOverview
+				m.targetReturnOverview = false
+				m.lineOffset, m.columnOffset = 0, 0
+				break
+			}
+			m.targetReturnOverview = m.overview
+			m.overview = false
+			m.target = true
+			m.columns = false
+			m.definition = false
+			m.lineOffset, m.columnOffset = 0, 0
+			return m, m.loadTarget()
 		case "d":
 			if m.overview {
 				break
 			}
 			m.definition = !m.definition
+			m.target = false
 			m.columns = false
 			m.cancelColumns()
 			m.lineOffset = 0
@@ -359,6 +398,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			m.columns = !m.columns
+			m.target = false
 			if !m.columns {
 				m.cancelColumns()
 			}
@@ -413,6 +453,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) columnCmdIfActive() tea.Cmd {
+	if m.target && len(m.views) > 0 {
+		return m.loadTarget()
+	}
 	if m.columns && len(m.views) > 0 {
 		return m.loadColumns()
 	}
@@ -517,7 +560,7 @@ func (m model) View() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("[c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate("[t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
 		return b.String()
 	}
 
@@ -535,7 +578,7 @@ func (m model) View() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
 	return b.String()
 }
 
@@ -621,7 +664,7 @@ func (m model) renderOverview(width int) string {
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
-	footer := "[f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
+	footer := "[t] target  [f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
 }
 
@@ -642,7 +685,9 @@ func (m model) renderDetail(width, height int) string {
 func (m model) detailLines() []string {
 	view := m.views[m.selected]
 	var lines []string
-	if m.columns {
+	if m.target {
+		return splitColumnLines(m.targetLines())
+	} else if m.columns {
 		return splitColumnLines(m.columnLines())
 	} else if m.definition {
 		lines = append(lines, accentStyle.Render("CREATE DEFINITION"), "")
