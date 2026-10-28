@@ -6,12 +6,17 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"chinspector/internal/clickhouse"
 )
 
 // overviewGraph groups views by target and draws each target only once.
 func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color) ([]string, []int) {
+	return overviewGraphFocused(views, rates, ready, selected, colors, false)
+}
+
+func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color, targetFocus bool) ([]string, []int) {
 	type row struct {
 		index                             int
 		inputs, inputStats, name, mvStats string
@@ -92,19 +97,28 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 		groupStyle := lipgloss.NewStyle().Foreground(colors[group.key])
 		rows := group.rows
 		center := len(rows) / 2
+		targetSelected := false
+		if targetFocus {
+			for _, index := range group.indices {
+				if index == selected {
+					targetSelected = true
+					break
+				}
+			}
+		}
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]
 		total := totalRateText(ready, value, available, history, hasHistory)
 		for j, row := range rows {
 			positions[row.index] = len(lines)
 			rowStyle, statsStyle, markerStyle := groupStyle, mutedStyle, accentStyle
-			if row.index == selected {
+			if row.index == selected && !targetFocus {
 				rowStyle = rowStyle.Background(selectionBackground)
 				statsStyle = statsStyle.Foreground(lipgloss.Color("#E2E8F0")).Background(selectionBackground)
 				markerStyle = markerStyle.Background(selectionBackground)
 			}
 			marker := rowStyle.Render("  ")
-			if row.index == selected {
+			if row.index == selected && !targetFocus {
 				marker = markerStyle.Render("› ")
 			}
 			branch := "──┤  "
@@ -122,11 +136,15 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			}
 			line := marker + rowStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + rowStyle.Render(" ─▶ ") + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
 			if j == center {
-				line += groupStyle.Render(" " + shortName(group.target))
+				targetStyle := groupStyle
+				if targetSelected {
+					targetStyle = targetStyle.Background(selectionBackground).Bold(true)
+				}
+				line += " " + targetStyle.Render(shortName(group.target))
 			}
 			lines = append(lines, line)
 			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth))
-			if row.index == selected {
+			if row.index == selected && !targetFocus {
 				stats = restoreMetricBackground(stats)
 			}
 			if j < len(rows)-1 {
@@ -135,7 +153,11 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 				stats += "      "
 			}
 			if j == center {
-				stats += mutedStyle.Render(" " + total)
+				if targetSelected {
+					stats += " " + restoreMetricBackground(mutedStyle.Background(selectionBackground).Render(total))
+				} else {
+					stats += mutedStyle.Render(" " + total)
+				}
 			}
 			lines = append(lines, stats)
 		}
@@ -215,4 +237,92 @@ func restoreMetricBackground(value string) string {
 		return value
 	}
 	return strings.ReplaceAll(value[:last], reset, reset+probe[:index]) + value[last:]
+}
+
+// Overview target positions refer to the central row of each target group.
+type overviewTargetPosition struct {
+	key                        string
+	index, line, column, width int
+}
+
+func (m model) overviewTargets() []overviewTargetPosition {
+	if len(m.views) == 0 {
+		return nil
+	}
+	lines, positions := m.overviewLines()
+	groups := map[string][]int{}
+	var keys []string
+	for i, v := range m.views {
+		target := clickhouse.InferFlow(v).Target
+		key := overviewGroupKey(v, target)
+		if _, ok := groups[key]; !ok {
+			keys = append(keys, key)
+		}
+		groups[key] = append(groups[key], i)
+	}
+	var result []overviewTargetPosition
+	for _, key := range keys {
+		indices := groups[key]
+		target := clickhouse.InferFlow(m.views[indices[0]]).Target
+		if target == "unknown target" || target == "internal storage (no TO)" {
+			continue
+		}
+		index := indices[len(indices)/2]
+		line := positions[index]
+		if line >= len(lines) {
+			continue
+		}
+		plain := ansi.Strip(lines[line])
+		name := shortName(target)
+		at := strings.LastIndex(plain, name)
+		if at < 0 {
+			continue
+		}
+		result = append(result, overviewTargetPosition{key: key, index: index, line: line, column: lipgloss.Width(plain[:at]), width: lipgloss.Width(name)})
+	}
+	return result
+}
+func (m *model) selectedOverviewTarget() (overviewTargetPosition, bool) {
+	if len(m.views) == 0 {
+		return overviewTargetPosition{}, false
+	}
+	view := m.views[m.selected]
+	key := overviewGroupKey(view, clickhouse.InferFlow(view).Target)
+	for _, pos := range m.overviewTargets() {
+		if pos.key == key {
+			return pos, true
+		}
+	}
+	return overviewTargetPosition{}, false
+}
+func (m *model) keepOverviewTargetVisible() {
+	pos, ok := m.selectedOverviewTarget()
+	if !ok {
+		return
+	}
+	visible := maxInt(1, m.height-7)
+	if pos.line < m.overviewScroll || pos.line+1 >= m.overviewScroll+visible {
+		m.overviewScroll = pos.line
+	}
+	width := maxInt(1, m.width)
+	if pos.column < m.overviewColumn {
+		m.overviewColumn = pos.column
+	} else if pos.column+pos.width > m.overviewColumn+width {
+		m.overviewColumn = maxInt(0, pos.column+pos.width-width)
+	}
+}
+func (m *model) moveOverviewTarget(delta int) {
+	targets := m.overviewTargets()
+	current, ok := m.selectedOverviewTarget()
+	if !ok {
+		return
+	}
+	for i, target := range targets {
+		if target.key == current.key {
+			next := minInt(maxInt(0, i+delta), len(targets)-1)
+			m.selected = targets[next].index
+			m.keepOverviewTargetVisible()
+			return
+		}
+	}
 }

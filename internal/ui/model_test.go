@@ -510,3 +510,42 @@ func TestOverviewAlignsMetricsAndTargetsAcrossGroups(t *testing.T) {
 		t.Fatalf("unaligned targets:\n%s", strings.Join(lines, "\n"))
 	}
 }
+
+func TestOverviewTargetKeyboardNavigation(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "first", Definition: "CREATE MATERIALIZED VIEW first TO dst_a AS SELECT * FROM src"},
+		{Database: "db", Name: "second", Definition: "CREATE MATERIALIZED VIEW second TO dst_a AS SELECT * FROM src"},
+		{Database: "db", Name: "third", Definition: "CREATE MATERIALIZED VIEW third TO dst_b AS SELECT * FROM src"},
+	}
+	m := model{width: 35, height: 16, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = next.(model)
+	if !m.overviewTargetFocus || m.overviewColumn == 0 {
+		t.Fatalf("target not selected or scrolled into view: %#v", m)
+	}
+	pos, ok := m.selectedOverviewTarget()
+	if !ok || pos.key != "db.dst_a" {
+		t.Fatalf("wrong target: %#v", pos)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	pos, ok = m.selectedOverviewTarget()
+	if !ok || pos.key != "db.dst_b" {
+		t.Fatalf("target navigation failed: %#v", pos)
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.target || m.overview || !m.targetLoading || cmd == nil || m.views[m.selected].Name != "third" {
+		t.Fatal("selected target did not open")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.overview || !m.overviewTargetFocus {
+		t.Fatal("overview target focus was not restored")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = next.(model)
+	if m.overviewTargetFocus {
+		t.Fatal("left did not return focus to MV")
+	}
+}

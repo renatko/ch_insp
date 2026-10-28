@@ -54,6 +54,21 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			graph, _ := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
 			if msg.Y >= 2 && msg.Y < 2+visible && line >= 4 && line < 4+len(graph) {
+				for _, target := range m.overviewTargets() {
+					x := msg.X + m.overviewColumn
+					if (line == target.line || line == target.line+1) && x >= target.column && x < target.column+target.width {
+						if m.overviewTargetFocus {
+							current, ok := m.selectedOverviewTarget()
+							if ok && current.key == target.key {
+								return m.Update(mouseKey("enter"))
+							}
+						}
+						m.selected = target.index
+						m.overviewTargetFocus = true
+						m.keepOverviewTargetVisible()
+						return m, nil
+					}
+				}
 				index, best := -1, -1
 				for i, position := range starts {
 					if position <= line && position > best {
@@ -61,6 +76,11 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if index >= 0 {
+					if m.overviewTargetFocus {
+						m.overviewTargetFocus = false
+						m.selected = index
+						return m, nil
+					}
 					if index == m.selected {
 						return m.Update(mouseKey("enter"))
 					}
@@ -118,9 +138,9 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelRight || (msg.Shift && (msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown)) {
 		if msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelUp {
-			return m.Update(mouseKey("left"))
+			return m.Update(mouseKey("H"))
 		}
-		return m.Update(mouseKey("right"))
+		return m.Update(mouseKey("L"))
 	}
 	delta := 0
 	if msg.Button == tea.MouseButtonWheelUp {

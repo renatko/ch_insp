@@ -76,6 +76,7 @@ type model struct {
 	metricsBusy          bool
 	metricsReady         bool
 	overview             bool
+	overviewTargetFocus  bool
 	overviewBusy         bool
 	overviewReady        bool
 	overviewRates        clickhouse.OverviewRates
@@ -306,6 +307,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		case "enter":
+			if m.overview && m.overviewTargetFocus && len(m.views) > 0 {
+				return m.Update(mouseKey("t"))
+			}
 			if m.overview && len(m.views) > 0 {
 				m.overview = false
 				m.lineOffset, m.columnOffset = 0, 0
@@ -343,6 +347,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if m.overview {
+				if m.overviewTargetFocus {
+					m.moveOverviewTarget(-1)
+					break
+				}
 				m.moveOverviewSelection(-1)
 				break
 			}
@@ -366,6 +374,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if m.overview {
+				if m.overviewTargetFocus {
+					m.moveOverviewTarget(1)
+					break
+				}
 				m.moveOverviewSelection(1)
 				break
 			}
@@ -442,8 +454,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			m.lineOffset = maxInt(0, m.lineOffset-maxInt(1, m.height-10))
-		case "right", "l":
+		case "right", "l", "L", "shift+right":
 			if m.overview {
+				if (msg.String() == "right" || msg.String() == "l") && !m.overviewTargetFocus {
+					if _, ok := m.selectedOverviewTarget(); ok {
+						m.overviewTargetFocus = true
+						m.keepOverviewTargetVisible()
+						break
+					}
+				}
 				lines, _ := m.overviewLines()
 				longest := 0
 				for _, line := range lines {
@@ -460,8 +479,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				detailWidth := m.detailWidth()
 				m.columnOffset = minInt(m.columnOffset+8, maxInt(0, longest-detailWidth))
 			}
-		case "left", "h":
+		case "left", "h", "H", "shift+left":
 			if m.overview {
+				if (msg.String() == "left" || msg.String() == "h") && m.overviewTargetFocus {
+					m.overviewTargetFocus = false
+					m.overviewColumn = 0
+					m.keepOverviewSelectionVisible()
+					break
+				}
 				m.overviewColumn = maxInt(0, m.overviewColumn-8)
 				break
 			}
@@ -491,6 +516,7 @@ func contains(items []string, value string) bool {
 }
 
 func (m *model) filterViews() {
+	m.overviewTargetFocus = false
 	m.viewRevision++
 	m.views = nil
 	for _, view := range m.allViews {
@@ -647,7 +673,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if allViews == nil {
 		allViews = m.views
 	}
-	graph, positions := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
+	graph, positions := overviewGraphFocused(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database), m.overviewTargetFocus)
 	for i := range positions {
 		positions[i] += len(header)
 	}
@@ -683,7 +709,7 @@ func (m model) renderOverview(width int) string {
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
-	footer := "[t] target  [f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
+	footer := "[enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
 }
 

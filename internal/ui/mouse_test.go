@@ -119,3 +119,18 @@ func TestMouseSelectsTargetColumn(t *testing.T) {
 		}
 	}
 }
+
+func TestOverviewTargetMouseSelectionAndOpen(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO chosen_target AS SELECT * FROM src"}}
+	m := model{width: 150, height: 25, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(mouseAtText(t, m, "chosen_target"))
+	m = next.(model)
+	if !m.overviewTargetFocus || !m.overview {
+		t.Fatal("target click did not select target")
+	}
+	next, cmd := m.Update(mouseAtText(t, m, "chosen_target"))
+	m = next.(model)
+	if !m.target || !m.targetLoading || cmd == nil {
+		t.Fatal("second target click did not open target")
+	}
+}
