@@ -68,3 +68,25 @@ func TestSearchJumpClearsPreviousDetailMode(t *testing.T) {
 		t.Fatal("search retained old detail mode or did not load overview")
 	}
 }
+
+func TestSearchRespectsVisibleViewsAndDistinctTargets(t *testing.T) {
+	all := []clickhouse.View{
+		{Database: "one", Name: "mv_a", Definition: "CREATE MATERIALIZED VIEW mv_a TO one.out AS SELECT * FROM one.events"},
+		{Database: "one", Name: "mv_b", Definition: "CREATE MATERIALIZED VIEW mv_b TO two.out AS SELECT * FROM two.events"},
+		{Database: "two", Name: "hidden", Definition: "CREATE MATERIALIZED VIEW hidden TO two.hidden_out AS SELECT * FROM two.events"},
+	}
+	m := model{database: "one", allViews: all, views: all[:2], searchQuery: "out"}
+	results := m.searchResults()
+	if len(results) != 2 || results[0].name != "one.out" || results[1].name != "two.out" {
+		t.Fatalf("wrong visible results: %#v", results)
+	}
+	m.searchQuery = "events"
+	results = m.searchResults()
+	if len(results) != 2 || results[0].name != "one.events" || results[1].name != "two.events" {
+		t.Fatalf("wrong source results: %#v", results)
+	}
+	m.searchQuery = "hidden"
+	if len(m.searchResults()) != 0 {
+		t.Fatal("search exposed a filtered view")
+	}
+}
