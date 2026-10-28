@@ -24,3 +24,18 @@ func TestInferFlow(t *testing.T) {
 		})
 	}
 }
+
+func TestTriggerInferenceOnlyForSupportedDirectSource(t *testing.T) {
+	cases := []struct{ sql, want string }{
+		{"CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM db.events a JOIN db.orders b ON a.id=b.id", "db.events"},
+		{"CREATE MATERIALIZED VIEW mv TO dst AS SELECT id FROM (SELECT id FROM db.events) q", ""},
+		{"CREATE MATERIALIZED VIEW mv TO dst AS SELECT id FROM db.events UNION ALL SELECT id FROM db.orders", ""},
+		{"CREATE MATERIALIZED VIEW mv REFRESH EVERY 1 MINUTE TO dst AS SELECT id FROM db.events", ""},
+	}
+	for _, tc := range cases {
+		got := InferFlow(View{Database: "db", Definition: tc.sql})
+		if got.Trigger != tc.want {
+			t.Errorf("%s: trigger %q, want %q", tc.sql, got.Trigger, tc.want)
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 type Flow struct {
 	Sources []string
 	Target  string
+	Trigger string // inferred only for supported incremental views
 }
 
 // InferFlow recognizes simple table references. Complex SQL remains visible in
@@ -63,7 +64,32 @@ func InferFlow(view View) Flow {
 			flow.Sources = append(flow.Sources, name)
 		}
 	}
+	flow.Trigger = inferTrigger(view)
 	return flow
+}
+
+// Only claim a trigger for a direct physical left-most FROM input in a
+// supported incremental query. Derived inputs and refreshable views are not
+// inferred here.
+func inferTrigger(view View) string {
+	tokens := sqlTokens(view.Definition)
+	for _, token := range tokens {
+		if strings.EqualFold(token, "SELECT") {
+			break
+		}
+		if strings.EqualFold(token, "REFRESH") {
+			return ""
+		}
+	}
+	plan, err := parseLineage(view)
+	if err != nil || plan.scope == nil || plan.scope.incomplete || len(plan.scope.relations) == 0 {
+		return ""
+	}
+	first := plan.scope.relations[0]
+	if first.table == nil {
+		return ""
+	}
+	return first.table.key()
 }
 
 func tableName(tokens []string, i int, database string) (string, int) {

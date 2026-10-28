@@ -53,6 +53,13 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			var names, stats []string
 			for _, source := range sources {
 				name := shortName(source)
+				if flow.Trigger != "" {
+					if source == flow.Trigger {
+						name += " [trigger]"
+					} else {
+						name += " [input]"
+					}
+				}
 				stat := "inserted: no data"
 				if !ready {
 					stat = "inserted: loading"
@@ -74,6 +81,9 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				history = &value
 			}
 			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
+			if flow.Trigger == "" {
+				mvStats += " · " + mutedStyle.Render("trigger unknown")
+			}
 			if ready && !available {
 				if label := metricStateLabel(rates.ViewDiagnostics[key]); label != "" {
 					mvStats += " · " + mutedStyle.Render(label)

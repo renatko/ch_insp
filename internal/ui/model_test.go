@@ -615,7 +615,7 @@ func TestOverviewHelpAndFooterRemainPinned(t *testing.T) {
 		if len(lines) != height {
 			t.Fatalf("height %d got %d lines", height, len(lines))
 		}
-		for i, want := range []string{"FLOW OVERVIEW", "Rates: 60s", "Sources may repeat"} {
+		for i, want := range []string{"FLOW OVERVIEW", "Rates: 60s", "[trigger]"} {
 			if !strings.Contains(ansi.Strip(lines[2+i]), want) {
 				t.Errorf("header %d: %s", i, lines[2+i])
 			}
@@ -633,7 +633,7 @@ func TestOverviewHeaderPinnedWhenScrolled(t *testing.T) {
 	}
 	m := model{width: 80, height: 12, database: "db", overview: true, views: views, allViews: views, overviewScroll: 9, overviewColumn: 10}
 	lines := strings.Split(m.View(), "\n")
-	if len(lines) != m.height || !strings.Contains(ansi.Strip(lines[2]), "FLOW OVERVIEW") || !strings.Contains(ansi.Strip(lines[3]), "Rates: 60s") || !strings.Contains(ansi.Strip(lines[4]), "Sources may repeat") || !strings.Contains(ansi.Strip(lines[m.height-1]), "[enter]") {
+	if len(lines) != m.height || !strings.Contains(ansi.Strip(lines[2]), "FLOW OVERVIEW") || !strings.Contains(ansi.Strip(lines[3]), "Rates: 60s") || !strings.Contains(ansi.Strip(lines[4]), "[trigger]") || !strings.Contains(ansi.Strip(lines[m.height-1]), "[enter]") {
 		t.Fatalf("header or footer moved: %s", m.View())
 	}
 }

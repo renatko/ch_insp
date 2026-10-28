@@ -767,7 +767,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes · local node"), mutedStyle.Render("Sources may repeat · JOIN inputs may not trigger MVs · logs can be delayed or disabled"), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes · local node"), mutedStyle.Render("[trigger]: inferred insert trigger · [input]: other query input · logs may be incomplete"), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
@@ -860,6 +860,9 @@ func (m model) detailLines() []string {
 	} else {
 		lines = append(lines, accentStyle.Render("DATA FLOW"), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
 		lines = append(lines, diagramLines(view, m.rates, m.metricsReady)...)
+		if clickhouse.InferFlow(view).Trigger == "" {
+			lines = append(lines, mutedStyle.Render("Trigger unknown; inspect the MV definition."))
+		}
 		if m.metricsReady {
 			lines = append(lines, "", mutedStyle.Render(statusText(m.rates.Status, m.rates.StatusError)), mutedStyle.Render("e: MV errors"))
 			if m.rates.StatusError != "" {
@@ -907,8 +910,19 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	}
 	sourceWidth := len("QUERY INPUT")
 	sourceColumnWidth := 0
+	sourceLabel := func(source string) string {
+		label := shortName(source)
+		if flow.Trigger != "" {
+			if source == flow.Trigger {
+				label += " [trigger]"
+			} else {
+				label += " [input]"
+			}
+		}
+		return label
+	}
 	for _, source := range sources {
-		sourceWidth = maxInt(sourceWidth, lipgloss.Width(shortName(source)))
+		sourceWidth = maxInt(sourceWidth, lipgloss.Width(sourceLabel(source)))
 		sourceColumnWidth = maxInt(sourceColumnWidth, lipgloss.Width(rate(source)))
 	}
 	sourceColumnWidth = maxInt(sourceColumnWidth, sourceWidth+4)
@@ -939,7 +953,7 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	top := middle - 2
 	lines := make([]string, total)
 	for row := 0; row < total; row++ {
-		box := diagramBox("QUERY INPUT", shortName(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceColor)
+		box := diagramBox("QUERY INPUT", sourceLabel(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceColor)
 		branch := "     "
 		if len(sources) == 1 && row == middle {
 			branch = "────▶"
