@@ -36,32 +36,34 @@ func historyBar(values [5]uint64) string {
 }
 
 func mvRateText(ready, available bool, read, written float64, history *clickhouse.ViewHistory) string {
-	text := "read/write: no data"
 	if !ready {
-		return "read/write: loading"
+		return mutedStyle.Render("read/write: loading")
 	}
-	if available {
+	if !available {
 		if history == nil {
-			return fmt.Sprintf("read %.1f rows/s / write %.1f rows/s", read, written)
+			return mutedStyle.Render("read/write: no data")
 		}
-		return fmt.Sprintf("read %.1f rows/s %s / write %.1f rows/s %s", read, historyBar(history.Read), written, historyBar(history.Written))
+		return mutedStyle.Render("read/write: no data · ") + readMetricStyle.Render("read "+historyBar(history.Read)) + " / " + writeMetricStyle.Render("write "+historyBar(history.Written))
 	}
+	readText := fmt.Sprintf("read %.1f rows/s", read)
+	writeText := fmt.Sprintf("write %.1f rows/s", written)
 	if history != nil {
-		text += fmt.Sprintf(" · read %s / write %s", historyBar(history.Read), historyBar(history.Written))
+		readText += " " + historyBar(history.Read)
+		writeText += " " + historyBar(history.Written)
 	}
-	return text
+	return readMetricStyle.Render(readText) + " / " + writeMetricStyle.Render(writeText)
 }
 
 func totalRateText(ready bool, value float64, available bool, history [5]uint64, hasHistory bool) string {
 	if !ready {
-		return "total: loading"
+		return writeMetricStyle.Render("total: loading")
 	}
 	text := "total: no data"
 	if available {
 		text = fmt.Sprintf("total: %.1f rows/s", value)
 	}
 	if hasHistory {
-		text += fmt.Sprintf(" %s", historyBar(history))
+		text += " " + historyBar(history)
 	}
-	return text
+	return writeMetricStyle.Render(text)
 }

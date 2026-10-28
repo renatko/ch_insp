@@ -456,3 +456,29 @@ func TestChartsShowFiveIntervals(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricColorsInDetailAndOverview(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}
+	rates := clickhouse.Rates{Tables: map[string]float64{"db.src": 4, "db.dst": 7}, MVAvailable: true, MVRead: 3, MVWritten: 2}
+	detail := strings.Join(diagramLines(view, rates, true), "\n")
+	overview := clickhouse.OverviewRates{Tables: rates.Tables, Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 3, Written: 2}}}
+	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
+	for _, text := range []string{detail, strings.Join(lines, "\n")} {
+		for _, item := range []struct{ name, color string }{{"parts:", "38;2;125;211;252"}, {"read ", "38;2;125;211;252"}, {"write ", "38;2;251;191;36"}, {"total:", "38;2;251;191;36"}} {
+			pos := strings.Index(text, item.name)
+			if pos < 0 {
+				t.Errorf("missing %s", item.name)
+				continue
+			}
+			prefix := text[:pos]
+			color := strings.LastIndex(prefix, item.color)
+			reset := strings.LastIndex(prefix, "\x1b[0m")
+			if color < 0 || color < reset {
+				t.Errorf("%s not using expected color: %q", item.name, text)
+			}
+		}
+	}
+}

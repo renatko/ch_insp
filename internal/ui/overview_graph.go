@@ -56,6 +56,7 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 				} else if value, ok := rates.Tables[source]; ok {
 					stat = fmt.Sprintf("parts: %.1f rows/s", value)
 				}
+				stat = readMetricStyle.Render(stat)
 				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))
 				names = append(names, name+strings.Repeat(" ", width-lipgloss.Width(name)))
 				stats = append(stats, stat+strings.Repeat(" ", width-lipgloss.Width(stat)))
@@ -110,6 +111,9 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			}
 			lines = append(lines, line)
 			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth))
+			if row.index == selected {
+				stats = restoreMetricBackground(stats)
+			}
 			if j < len(rows)-1 {
 				stats += groupStyle.Render("   │  ")
 			} else {
@@ -180,4 +184,20 @@ func overviewColors(views []clickhouse.View, database string) map[string]lipglos
 		colors[key] = overviewPalette[i%len(overviewPalette)]
 	}
 	return colors
+}
+
+// Nested foreground styles reset terminal attributes; restore the selected
+// background after those resets, leaving the final reset at the row boundary.
+func restoreMetricBackground(value string) string {
+	const reset = "\x1b[0m"
+	last := strings.LastIndex(value, reset)
+	if last < 0 {
+		return value
+	}
+	probe := lipgloss.NewStyle().Background(selectionBackground).Render("X")
+	index := strings.Index(probe, "X")
+	if index <= 0 {
+		return value
+	}
+	return strings.ReplaceAll(value[:last], reset, reset+probe[:index]) + value[last:]
 }

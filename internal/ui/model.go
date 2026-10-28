@@ -92,6 +92,8 @@ var (
 	sourceStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5B4FC"))
 	viewStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
 	targetStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#86EFAC"))
+	readMetricStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
+	writeMetricStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#FBBF24"))
 	selectionBackground = lipgloss.Color("#334155")
 )
 
@@ -740,13 +742,13 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	}
 	rate := func(name string) string {
 		if !ready {
-			return "parts: loading"
+			return readMetricStyle.Render("parts: loading")
 		}
 		v, ok := rates.Tables[name]
 		if !ok {
-			return "parts: no data"
+			return readMetricStyle.Render("parts: no data")
 		}
-		return fmt.Sprintf("parts: %.1f rows/s", v)
+		return readMetricStyle.Render(fmt.Sprintf("parts: %.1f rows/s", v))
 	}
 	sourceWidth := len("QUERY INPUT")
 	sourceColumnWidth := 0
@@ -766,7 +768,7 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	} else if rates.MVAvailable {
 		targetMV = fmt.Sprintf("MV: %.1f rows/s", rates.MVWritten)
 	}
-	target := diagramBox("TARGET", shortName(flow.Target), targetMV+" · "+targetTotal, 0, 0, false, targetColor)
+	target := diagramBox("TARGET", shortName(flow.Target), writeMetricStyle.Render(targetMV)+" · "+targetTotal, 0, 0, false, targetColor)
 	total := len(sources) * 5
 	middle := (len(sources)/2)*5 + 2
 	top := middle - 2

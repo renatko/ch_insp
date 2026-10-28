@@ -90,7 +90,8 @@ inputs, wildcard modifiers and settings-dependent columns remain uncertain.
 The diagram refreshes rates approximately every 5 seconds. Rates are local-node
 averages over the preceding 60 seconds, derived from asynchronously flushed
 system logs, so they can lag and undercount (including when query logging is
-sampled). Table `parts` rates count rows in successful `NewPart` events from
+sampled). Metrics use blue for `read` and `parts`, and amber for `write` and
+target `total`. Table `parts` rates count rows in successful `NewPart` events from
 `system.part_log`; they cover MergeTree tables and include all writers to the
 table, not only the selected view. The target displays both this total rate and
 the selected MV's write rate; either can be unavailable independently. MV `read/write` rates come from successful
