@@ -16,6 +16,8 @@ type Rates struct {
 	MVAvailable       bool
 	MVHistory         *ViewHistory
 	Errors            []string
+	Status            *ViewStatus
+	StatusError       string
 }
 
 func LoadRates(ctx context.Context, dsn string, view View) Rates {
@@ -75,6 +77,12 @@ func LoadRates(ctx context.Context, dsn string, view View) Rates {
 		rates.MVAvailable = true
 		rates.MVRead = float64(read) / 60
 		rates.MVWritten = float64(written) / 60
+	}
+	statuses, statusErr := loadViewStatuses(ctx, db, []string{view.Database + "." + view.Name})
+	if statusErr != nil {
+		rates.StatusError = statusErr.Error()
+	} else if status, ok := statuses[view.Database+"."+view.Name]; ok {
+		rates.Status = &status
 	}
 	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables)
 	rates.TableHistory = tableHistory

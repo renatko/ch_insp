@@ -637,3 +637,35 @@ func TestOverviewHeaderPinnedWhenScrolled(t *testing.T) {
 		t.Fatalf("header or footer moved: %s", m.View())
 	}
 }
+
+func TestViewStatusAndErrorNavigation(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, viewRevision: 3, views: views, allViews: views, overviewReady: true, overviewRates: clickhouse.OverviewRates{Statuses: map[string]clickhouse.ViewStatus{"db.mv": {Errors: 2}}}}
+	lines, _ := m.overviewLines()
+	if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "no success observed · errors 2") {
+		t.Fatal("status missing in overview")
+	}
+	next, cmd := m.Update(mouseKey("e"))
+	m = next.(model)
+	if !m.failuresMode || !m.failuresLoading || m.overview || cmd == nil {
+		t.Fatal("errors screen did not load")
+	}
+	next, _ = m.Update(failuresLoadedMsg{key: "db\x00mv", revision: 3, request: m.columnsRequest - 1})
+	m = next.(model)
+	if !m.failuresLoading {
+		t.Fatal("stale error results accepted")
+	}
+	failures := []clickhouse.ViewFailure{{Code: 42, Status: "ExceptionWhileProcessing", Message: "first line\nunderlying error"}}
+	next, _ = m.Update(failuresLoadedMsg{key: "db\x00mv", revision: 3, request: m.columnsRequest, failures: failures})
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.failureDetail || !strings.Contains(strings.Join(m.detailLines(), "\n"), "underlying error") {
+		t.Fatal("full error missing")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.overview || m.failuresMode {
+		t.Fatal("did not return to overview")
+	}
+}

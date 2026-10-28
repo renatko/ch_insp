@@ -72,6 +72,18 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				history = &value
 			}
 			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
+			if rates.Statuses != nil || rates.StatusError != "" {
+				var status *clickhouse.ViewStatus
+				if value, ok := rates.Statuses[key]; ok {
+					status = &value
+				}
+				summary := statusText(status, rates.StatusError)
+				if status != nil && status.Errors > 0 {
+					mvStats += " · " + errorStyle.Render(summary)
+				} else {
+					mvStats += " · " + mutedStyle.Render(summary)
+				}
+			}
 			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
 			if left, _, ok := strings.Cut(mvStats, " / "); ok {
 				readWidth = maxInt(readWidth, lipgloss.Width(left))

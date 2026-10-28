@@ -95,6 +95,26 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.failuresMode && !m.failuresLoading && !m.failureDetail && m.failuresError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+			contentTop := 3
+			height := maxInt(5, m.height-8)
+			if m.width < 70 {
+				contentTop = 4
+				height = maxInt(5, m.height-9)
+			}
+			lines := m.detailLines()
+			offset := minInt(m.lineOffset, maxInt(0, len(lines)-maxInt(1, height-2)))
+			index := msg.Y - contentTop + offset - 3
+			if msg.Y >= contentTop && msg.Y < contentTop+height-2 && index >= 0 && index < len(m.failures) {
+				if index == m.failureSelected {
+					m.failureDetail = true
+					m.lineOffset = 0
+				} else {
+					m.failureSelected = index
+				}
+				return m, nil
+			}
+		}
 		if m.target && !m.targetLoading && m.targetError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
 			contentTop := 3
 			height := maxInt(5, m.height-8)
@@ -117,7 +137,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			start := maxInt(0, m.selected-limit+1)
 			index := start + msg.Y - 4
 			if index >= start && index < minInt(len(m.views), start+limit) {
-				if m.selectView(index) && (m.columns || m.target) {
+				if m.selectView(index) && (m.columns || m.target || m.failuresMode) {
 					cmd := m.columnCmdIfActive()
 					return m, cmd
 				}
@@ -169,7 +189,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.width >= 70 && msg.X < maxInt(26, m.width/3) {
 		if len(m.views) > 0 {
-			if m.selectView(minInt(maxInt(0, m.selected+delta), len(m.views)-1)) && (m.columns || m.target) {
+			if m.selectView(minInt(maxInt(0, m.selected+delta), len(m.views)-1)) && (m.columns || m.target || m.failuresMode) {
 				cmd := m.columnCmdIfActive()
 				return m, cmd
 			}
@@ -218,7 +238,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

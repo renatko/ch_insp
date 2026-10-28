@@ -13,6 +13,8 @@ type OverviewRates struct {
 	Views        map[string]ViewRate
 	History      map[string]ViewHistory
 	Errors       []string
+	Statuses     map[string]ViewStatus
+	StatusError  string
 }
 
 // LoadOverviewRates reads the same local-node, 60-second log window as LoadRates,
@@ -102,6 +104,11 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View) OverviewRa
 			out.Errors = append(out.Errors, "view log: "+err.Error())
 			break
 		}
+	}
+	statuses, statusErr := loadViewStatuses(ctx, db, viewNames)
+	out.Statuses = statuses
+	if statusErr != nil {
+		out.StatusError = statusErr.Error()
 	}
 	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames)
 	out.TableHistory = tableHistory

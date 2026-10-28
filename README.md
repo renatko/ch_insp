@@ -106,6 +106,8 @@ use the same local-node successful MV events and successful `NewPart` events as
 the rates; they do not include other cluster nodes, failed view executions or
 replica part downloads. Target totals include all observed writers.
 
+The overview and MV detail show observed execution status for the last 24 hours on the connected node. Press `e` to inspect up to 50 logged MV errors; Enter opens the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
+
 Press `o` to open a flow overview for every MV in the selected database. Views
 that write to the same target are grouped and connect to one target. Each MV
 occupies two lines: the flow, then rates directly below its inputs and MV. The
