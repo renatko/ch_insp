@@ -19,16 +19,17 @@ type Rates struct {
 	Status            *ViewStatus
 	StatusError       string
 	ChartWindowEnd    time.Time
+	StatusHours       int
 }
 
 // LoadRates uses the same batched collection and diagnostics as overview.
-func LoadRates(ctx context.Context, dsn string, view View, period int) Rates {
-	return ratesForView(LoadOverviewRates(ctx, dsn, []View{view}, period), view)
+func LoadRates(ctx context.Context, dsn string, view View, period int, hours int) Rates {
+	return ratesForView(LoadOverviewRates(ctx, dsn, []View{view}, period, hours), view)
 }
 
 func ratesForView(all OverviewRates, view View) Rates {
 	key := view.Database + "." + view.Name
-	result := Rates{Tables: all.Tables, TableDiagnostics: all.TableDiagnostics, TableHistory: all.TableHistory, Errors: all.Errors, StatusError: all.StatusError, ChartWindowEnd: all.ChartWindowEnd}
+	result := Rates{Tables: all.Tables, TableDiagnostics: all.TableDiagnostics, TableHistory: all.TableHistory, Errors: all.Errors, StatusError: all.StatusError, ChartWindowEnd: all.ChartWindowEnd, StatusHours: all.StatusHours}
 	if diagnostic, ok := all.ViewDiagnostics[key]; ok {
 		result.MVDiagnostic = diagnostic
 	} else {

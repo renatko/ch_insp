@@ -18,18 +18,29 @@ type failuresLoadedMsg struct {
 	err      error
 }
 
-func statusText(status *clickhouse.ViewStatus, err string) string {
+func statusHoursLabel(hours int) string {
+	switch hours {
+	case 1:
+		return "1h"
+	case 168:
+		return "7d"
+	default:
+		return "24h"
+	}
+}
+func statusText(status *clickhouse.ViewStatus, err string, hours int) string {
+	window := statusHoursLabel(hours)
 	if err != "" {
 		return "status unavailable"
 	}
 	if status == nil || (status.Successes == 0 && status.Errors == 0) {
-		return "status unknown (24h)"
+		return "status unknown (" + window + ")"
 	}
 	last := "no success observed"
 	if status.Successes > 0 {
 		last = "last ok " + status.LastSuccess.Format("15:04:05")
 	}
-	return fmt.Sprintf("%s · errors %d (24h, observed)", last, status.Errors)
+	return fmt.Sprintf("%s · errors %d (%s, observed)", last, status.Errors, window)
 }
 func (m *model) loadFailures() tea.Cmd {
 	if len(m.views) == 0 {
@@ -37,6 +48,7 @@ func (m *model) loadFailures() tea.Cmd {
 	}
 	m.cancelColumns()
 	view, revision, dsn := m.views[m.selected], m.viewRevision, m.dsn
+	hours := m.statusWindowHours()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	m.columnsCancel = cancel
 	m.columnsRequest++
@@ -47,12 +59,12 @@ func (m *model) loadFailures() tea.Cmd {
 	m.failureDetail = false
 	return func() tea.Msg {
 		defer cancel()
-		failures, err := clickhouse.LoadViewFailures(ctx, dsn, view)
+		failures, err := clickhouse.LoadViewFailures(ctx, dsn, view, hours)
 		return failuresLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, failures: failures, err: err}
 	}
 }
 func (m model) failureLines() []string {
-	lines := []string{accentStyle.Render("MV ERRORS · " + m.views[m.selected].Name), mutedStyle.Render("Last 24h · local node · up to 50 events · e/esc: back"), ""}
+	lines := []string{accentStyle.Render("MV ERRORS · " + m.views[m.selected].Name), mutedStyle.Render("Last " + m.statusWindowLabel() + " · local node · up to 50 events · w: window · e/esc: back"), ""}
 	if m.failuresLoading {
 		return append(lines, mutedStyle.Render("Loading errors…"))
 	}

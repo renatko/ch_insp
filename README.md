@@ -107,7 +107,7 @@ use the same local-node successful MV events and successful `NewPart` events as
 the rates; they do not include other cluster nodes, failed view executions or
 replica part downloads. Target totals include all observed writers.
 
-The overview and MV detail show observed execution status for the last 24 hours on the connected node. Press `e` to inspect up to 50 logged MV errors; Enter opens the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
+The overview and MV detail show observed execution status on the connected node. Press `w` to switch the error window between 24 hours, 1 hour and 7 days; press `e` to inspect up to 50 logged MV errors, then Enter to open the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
 
 Press `o` to open a flow overview for every MV in the selected database. Views
 that write to the same target are grouped and connect to one target. Each MV
@@ -149,7 +149,7 @@ cover the connected server only, not the entire cluster or replicas.
 - `b`: choose a database; use `↑` / `↓` and `Enter` to switch, `Esc` to cancel
 - `/`: search visible sources, MVs and targets
 - `f`: edit source and target table filters
-- `e`: inspect recent MV errors
+- `e`: inspect recent MV errors; `w`: change their observation window
 - `g`: inspect inferred table dependencies
 - `t`: inspect the selected MV target table
 - `n`: select a discovered native TCP node

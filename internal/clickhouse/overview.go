@@ -20,12 +20,13 @@ type OverviewRates struct {
 	StatusError      string
 	SharedScale      bool
 	ChartWindowEnd   time.Time
+	StatusHours      int
 }
 
 // LoadOverviewRates reads the same local-node, 60-second log window as LoadRates,
 // grouped for all objects in the selected database's flows.
-func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int) OverviewRates {
-	out := OverviewRates{Tables: map[string]float64{}, Views: map[string]ViewRate{}}
+func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int, hours int) OverviewRates {
+	out := OverviewRates{Tables: map[string]float64{}, Views: map[string]ViewRate{}, StatusHours: validStatusHours(hours)}
 	if len(views) == 0 {
 		return out
 	}
@@ -146,7 +147,7 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 			break
 		}
 	}
-	statuses, statusErr := loadViewStatuses(ctx, db, viewNames, dsn)
+	statuses, statusErr := loadViewStatuses(ctx, db, viewNames, dsn, hours)
 	out.Statuses = statuses
 	if statusErr != nil {
 		out.StatusError = statusErr.Error()

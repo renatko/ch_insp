@@ -98,7 +98,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				if value, ok := rates.Statuses[key]; ok {
 					status = &value
 				}
-				summary := statusText(status, rates.StatusError)
+				summary := statusText(status, rates.StatusError, rates.StatusHours)
 				if status != nil && status.Errors > 0 {
 					mvStats += " · " + errorStyle.Render(summary)
 				} else {

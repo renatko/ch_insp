@@ -797,3 +797,26 @@ func TestClusterSurveySelectionAndFailureDetail(t *testing.T) {
 		t.Fatal("details did not close")
 	}
 }
+
+func TestErrorWindowSwitchReloadsAndRejectsStale(t *testing.T) {
+	m := model{width: 120, height: 25, database: "db", views: []clickhouse.View{{Database: "db", Name: "mv"}}, failuresMode: true}
+	old := m.loadFailures()
+	if old == nil {
+		t.Fatal("failure load missing")
+	}
+	previous := m.columnsRequest
+	next, cmd := m.Update(mouseKey("w"))
+	m = next.(model)
+	if m.statusWindowHours() != 1 || !m.failuresLoading || cmd == nil || m.columnsRequest == previous {
+		t.Fatal("window did not reload failures")
+	}
+	next, _ = m.Update(failuresLoadedMsg{key: "db\x00mv", revision: m.viewRevision, request: previous})
+	m = next.(model)
+	if !m.failuresLoading {
+		t.Fatal("old window response was accepted")
+	}
+	if !strings.Contains(m.failureLines()[1], "Last 1h") {
+		t.Fatal("window label not updated")
+	}
+	m.cancelColumns()
+}

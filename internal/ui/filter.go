@@ -213,12 +213,12 @@ func (m model) applyFilter(source, target []string) (tea.Model, tea.Cmd) {
 	}
 	if m.overview && !m.overviewBusy {
 		m.overviewBusy = true
-		return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+		return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 	}
 	if !m.overview && !m.metricsBusy {
 		m.metricsBusy = true
 		cmd := m.columnCmdIfActive()
-		return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), cmd)
+		return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch), cmd)
 	}
 	if !m.overview {
 		cmd := m.columnCmdIfActive()

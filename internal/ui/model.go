@@ -108,6 +108,7 @@ type model struct {
 	metricsReady             bool
 	overview                 bool
 	chartPeriod              int
+	statusWindow             int
 	chartCommon              bool
 	chartEpoch               uint64
 	overviewTargetFocus      bool
@@ -146,20 +147,20 @@ func metricsTick() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return metricsTickMsg(t) })
 }
 
-func loadMetrics(dsn string, view clickhouse.View, period int, epoch uint64) tea.Cmd {
+func loadMetrics(dsn string, view clickhouse.View, period int, hours int, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return metricsLoadedMsg{epoch: epoch, period: period, key: view.Database + "\x00" + view.Name, rates: clickhouse.LoadRates(ctx, dsn, view, period)}
+		return metricsLoadedMsg{epoch: epoch, period: period, key: view.Database + "\x00" + view.Name, rates: clickhouse.LoadRates(ctx, dsn, view, period, hours)}
 	}
 }
 
-func loadOverview(dsn, database string, views []clickhouse.View, revision int, period int, epoch uint64) tea.Cmd {
+func loadOverview(dsn, database string, views []clickhouse.View, revision int, period int, hours int, epoch uint64) tea.Cmd {
 	views = append([]clickhouse.View(nil), views...)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return overviewLoadedMsg{epoch: epoch, period: period, database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views, period)}
+		return overviewLoadedMsg{epoch: epoch, period: period, database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views, period, hours)}
 	}
 }
 
@@ -224,19 +225,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil && m.overview && len(m.views) > 0 && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 		}
 		if msg.err == nil && !m.overview && (m.columns || m.target || m.failuresMode) && len(m.views) > 0 {
 			cmd := m.columnCmdIfActive()
 			if !m.metricsBusy {
 				m.metricsBusy = true
-				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch))
+				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch))
 			}
 			return m, cmd
 		}
 		if msg.err == nil && !m.overview && len(m.views) > 0 && !m.metricsBusy {
 			m.metricsBusy = true
-			return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch)
+			return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 		}
 	case nodesLoadedMsg:
 		if m.choosingNode && msg.request == m.nodeRequest {
@@ -284,20 +285,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.views) > 0 {
 				if m.overview {
 					m.overviewBusy = true
-					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 				}
 				m.metricsBusy = true
-				return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), m.columnCmdIfActive())
+				return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch), m.columnCmdIfActive())
 			}
 		}
 	case metricsTickMsg:
 		if m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch))
+			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch))
 		}
 		if !m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.metricsBusy {
 			m.metricsBusy = true
-			return m, tea.Batch(metricsTick(), loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch))
+			return m, tea.Batch(metricsTick(), loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch))
 		}
 		return m, metricsTick()
 	case metricsLoadedMsg:
@@ -420,12 +421,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.choosingDatabase = false
 				if m.overview && len(m.views) > 0 && !m.overviewBusy {
 					m.overviewBusy = true
-					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 				}
 				if !m.overview && len(m.views) > 0 && !m.metricsBusy {
 					m.metricsBusy = true
 					cmd := m.columnCmdIfActive()
-					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), cmd)
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch), cmd)
 				}
 				if !m.overview {
 					cmd := m.columnCmdIfActive()
@@ -441,6 +442,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.loadNodes()
 			}
 			return m, nil
+		case "w":
+			m.statusWindow = (m.statusWindow + 1) % 3
+			m.chartEpoch++
+			m.metricsReady = false
+			m.overviewReady = false
+			if len(m.views) > 0 && m.err == nil && !m.loading {
+				if m.overview {
+					m.overviewBusy = true
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
+				}
+				m.metricsBusy = true
+				if m.failuresMode {
+					return m, tea.Batch(m.loadFailures(), loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch))
+				}
+				return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
+			}
 		case "p":
 			m.chartPeriod = (m.chartPeriod + 1) % 3
 			m.chartEpoch++
@@ -448,11 +465,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.overview {
 					m.overviewReady = false
 					m.overviewBusy = true
-					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 				}
 				m.metricsReady = false
 				m.metricsBusy = true
-				return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch)
+				return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 			}
 		case "s":
 			m.chartCommon = !m.chartCommon
@@ -496,7 +513,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.overview && len(m.views) > 0 && !m.overviewBusy {
 				m.overviewBusy = true
-				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 			}
 			if !m.overview {
 				cmd := m.columnCmdIfActive()
@@ -518,7 +535,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.metricsBusy {
 					m.metricsBusy = true
 					cmd := m.columnCmdIfActive()
-					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), cmd)
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch), cmd)
 				}
 				cmd := m.columnCmdIfActive()
 				return m, cmd
@@ -998,7 +1015,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[enter] open  [f] filter  [/] search  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
+	footer := "[enter] open  [f] filter  [/] search  [w] error window  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
@@ -1046,7 +1063,7 @@ func (m model) detailLines() []string {
 			lines = append(lines, mutedStyle.Render("Trigger unknown; inspect the MV definition."))
 		}
 		if m.metricsReady {
-			lines = append(lines, "", mutedStyle.Render(statusText(m.rates.Status, m.rates.StatusError)), mutedStyle.Render("e: MV errors"))
+			lines = append(lines, "", mutedStyle.Render(statusText(m.rates.Status, m.rates.StatusError, m.statusWindowHours())), mutedStyle.Render("e: MV errors"))
 			if m.rates.StatusError != "" {
 				lines = append(lines, errorStyle.Render("Status: "+m.rates.StatusError))
 			}
@@ -1273,3 +1290,15 @@ func (m model) chartScaleLabel() string {
 	}
 	return "individual scale"
 }
+
+func (m model) statusWindowHours() int {
+	switch m.statusWindow {
+	case 1:
+		return 1
+	case 2:
+		return 168
+	default:
+		return 24
+	}
+}
+func (m model) statusWindowLabel() string { return statusHoursLabel(m.statusWindowHours()) }
