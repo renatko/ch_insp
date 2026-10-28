@@ -64,7 +64,7 @@ func TestDiagramDisplaysMeasuredRatesAndMissingData(t *testing.T) {
 	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
 	rates := clickhouse.Rates{Tables: map[string]float64{"db.source": 12.5}, MVAvailable: true, MVRead: 10, MVWritten: 4}
 	joined := strings.Join(diagramLines(view, rates, true), "\n")
-	for _, want := range []string{"parts: 12.5 rows/s", "read 10.0 rows/s / write 4.0 rows/s", "MV: 4.0 rows/s", "total: no data"} {
+	for _, want := range []string{"inserted: 12.5 rows/s", "read 10.0 rows/s / write 4.0 rows/s", "MV: 4.0 rows/s", "total: no data"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("diagram missing %q:\n%s", want, joined)
 		}
@@ -91,7 +91,7 @@ func TestDiagramMetricsBelowBoxes(t *testing.T) {
 	if !strings.Contains(lines[3], "╰") || strings.Contains(lines[3], "no data") {
 		t.Fatalf("expected box bottoms before metrics: %q", lines[3])
 	}
-	for _, metric := range []string{"parts: no data", "read/write: no data"} {
+	for _, metric := range []string{"inserted: no data", "read/write: no data"} {
 		if !strings.Contains(lines[4], metric) {
 			t.Errorf("metric %q not below box: %q", metric, lines[4])
 		}
@@ -105,7 +105,7 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.source": 10, "db.middle": 7}, Views: map[string]clickhouse.ViewRate{"db.mv1": {Read: 10, Written: 5}}}}
 	lines, starts := m.overviewLines()
 	joined := strings.Join(lines, "\n")
-	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "parts: 10.0 rows/s", "read 10.0 rows/s / write 5.0 rows/s", "total: 7.0 rows/s"} {
+	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "inserted: 10.0 rows/s", "read 10.0 rows/s / write 5.0 rows/s", "total: 7.0 rows/s"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview missing %q:\n%s", value, joined)
 		}
@@ -196,7 +196,7 @@ func TestOverviewRepeatsSourceAcrossViewsAndTargets(t *testing.T) {
 	if strings.Count(joined, "▶") != 4 {
 		t.Fatalf("expected arrows into both views and targets:\n%s", joined)
 	}
-	for _, want := range []string{"one", "two", "first", "second", "parts: 12.0 rows/s", "▶"} {
+	for _, want := range []string{"one", "two", "first", "second", "inserted: 12.0 rows/s", "▶"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q:\n%s", want, joined)
 		}
@@ -253,7 +253,7 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 		}
 		return lipgloss.Width(line[:i])
 	}
-	if col(nameLine, "src") != col(statsLine, "parts: 12.0 rows/s") || col(nameLine, "users") != col(statsLine, "parts: 3.0 rows/s") || col(nameLine, "view_one") != col(statsLine, "read 9.0 rows/s / write 5.0 rows/s") {
+	if col(nameLine, "src") != col(statsLine, "inserted: 12.0 rows/s") || col(nameLine, "users") != col(statsLine, "inserted: 3.0 rows/s") || col(nameLine, "view_one") != col(statsLine, "read 9.0 rows/s / write 5.0 rows/s") {
 		t.Fatalf("statistics are not below their nodes:\n%s\n%s", nameLine, statsLine)
 	}
 	nameLine, statsLine = ansi.Strip(lines[starts[1]]), ansi.Strip(lines[starts[1]+1])
@@ -467,7 +467,7 @@ func TestMetricColorsInDetailAndOverview(t *testing.T) {
 	overview := clickhouse.OverviewRates{Tables: rates.Tables, Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 3, Written: 2}}}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
 	for _, text := range []string{detail, strings.Join(lines, "\n")} {
-		for _, item := range []struct{ name, color string }{{"parts:", "38;2;125;211;252"}, {"read ", "38;2;125;211;252"}, {"write ", "38;2;251;191;36"}, {"total:", "38;2;251;191;36"}} {
+		for _, item := range []struct{ name, color string }{{"inserted:", "38;2;125;211;252"}, {"read ", "38;2;125;211;252"}, {"write ", "38;2;251;191;36"}, {"total:", "38;2;251;191;36"}} {
 			pos := strings.Index(text, item.name)
 			if pos < 0 {
 				t.Errorf("missing %s", item.name)

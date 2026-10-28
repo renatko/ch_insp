@@ -50,11 +50,11 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			var names, stats []string
 			for _, source := range sources {
 				name := shortName(source)
-				stat := "parts: no data"
+				stat := "inserted: no data"
 				if !ready {
-					stat = "parts: loading"
+					stat = "inserted: loading"
 				} else if value, ok := rates.Tables[source]; ok {
-					stat = fmt.Sprintf("parts: %.1f rows/s", value)
+					stat = fmt.Sprintf("inserted: %.1f rows/s", value)
 				}
 				stat = readMetricStyle.Render(stat)
 				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))

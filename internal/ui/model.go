@@ -742,13 +742,13 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	}
 	rate := func(name string) string {
 		if !ready {
-			return readMetricStyle.Render("parts: loading")
+			return readMetricStyle.Render("inserted: loading")
 		}
 		v, ok := rates.Tables[name]
 		if !ok {
-			return readMetricStyle.Render("parts: no data")
+			return readMetricStyle.Render("inserted: no data")
 		}
-		return readMetricStyle.Render(fmt.Sprintf("parts: %.1f rows/s", v))
+		return readMetricStyle.Render(fmt.Sprintf("inserted: %.1f rows/s", v))
 	}
 	sourceWidth := len("QUERY INPUT")
 	sourceColumnWidth := 0
