@@ -38,7 +38,7 @@ func statusText(status *clickhouse.ViewStatus, err string, hours int) string {
 	}
 	last := "no success observed"
 	if status.Successes > 0 {
-		last = "last ok " + status.LastSuccess.Format("15:04:05")
+		last = "last ok " + status.LastSuccess.Format("2006-01-02 15:04")
 	}
 	return fmt.Sprintf("%s · errors %d (%s, observed)", last, status.Errors, window)
 }

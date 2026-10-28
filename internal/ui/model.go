@@ -1068,7 +1068,7 @@ func (m model) detailLines() []string {
 				lines = append(lines, errorStyle.Render("Status: "+m.rates.StatusError))
 			}
 		}
-		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: "+m.chartPeriodLabel()+"."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: "+m.chartPeriodLabel()+"."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("inserted/total: system.part_log · MV: system.query_views_log"), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
 		if m.metricsReady {
 			for _, err := range m.rates.Errors {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))

@@ -820,3 +820,11 @@ func TestErrorWindowSwitchReloadsAndRejectsStale(t *testing.T) {
 	}
 	m.cancelColumns()
 }
+
+func TestStatusIncludesDateForLongObservationWindows(t *testing.T) {
+	status := clickhouse.ViewStatus{Successes: 1, LastSuccess: time.Date(2026, 10, 21, 9, 30, 0, 0, time.UTC)}
+	text := statusText(&status, "", 168)
+	if !strings.Contains(text, "2026-10-21 09:30") || !strings.Contains(text, "7d") {
+		t.Fatalf("ambiguous status time: %s", text)
+	}
+}
