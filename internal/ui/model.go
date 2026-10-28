@@ -20,10 +20,14 @@ type viewsLoadedMsg struct {
 
 type metricsTickMsg time.Time
 type metricsLoadedMsg struct {
-	key   string
-	rates clickhouse.Rates
+	epoch  uint64
+	period int
+	key    string
+	rates  clickhouse.Rates
 }
 type overviewLoadedMsg struct {
+	epoch    uint64
+	period   int
 	database string
 	revision int
 	rates    clickhouse.OverviewRates
@@ -92,6 +96,9 @@ type model struct {
 	metricsBusy              bool
 	metricsReady             bool
 	overview                 bool
+	chartPeriod              int
+	chartCommon              bool
+	chartEpoch               uint64
 	overviewTargetFocus      bool
 	overviewBusy             bool
 	overviewReady            bool
@@ -128,20 +135,20 @@ func metricsTick() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return metricsTickMsg(t) })
 }
 
-func loadMetrics(dsn string, view clickhouse.View) tea.Cmd {
+func loadMetrics(dsn string, view clickhouse.View, period int, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return metricsLoadedMsg{key: view.Database + "\x00" + view.Name, rates: clickhouse.LoadRates(ctx, dsn, view)}
+		return metricsLoadedMsg{epoch: epoch, period: period, key: view.Database + "\x00" + view.Name, rates: clickhouse.LoadRates(ctx, dsn, view, period)}
 	}
 }
 
-func loadOverview(dsn, database string, views []clickhouse.View, revision int) tea.Cmd {
+func loadOverview(dsn, database string, views []clickhouse.View, revision int, period int, epoch uint64) tea.Cmd {
 	views = append([]clickhouse.View(nil), views...)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return overviewLoadedMsg{database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views)}
+		return overviewLoadedMsg{epoch: epoch, period: period, database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views, period)}
 	}
 }
 
@@ -205,36 +212,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil && m.overview && len(m.views) > 0 && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
+			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
 		}
 		if msg.err == nil && !m.overview && (m.columns || m.target || m.failuresMode) && len(m.views) > 0 {
 			cmd := m.columnCmdIfActive()
 			if !m.metricsBusy {
 				m.metricsBusy = true
-				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected]))
+				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch))
 			}
 			return m, cmd
 		}
 		if msg.err == nil && !m.overview && len(m.views) > 0 && !m.metricsBusy {
 			m.metricsBusy = true
-			return m, loadMetrics(m.dsn, m.views[m.selected])
+			return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch)
 		}
 	case metricsTickMsg:
 		if m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision))
+			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch))
 		}
 		if !m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.metricsBusy {
 			m.metricsBusy = true
-			return m, tea.Batch(metricsTick(), loadMetrics(m.dsn, m.views[m.selected]))
+			return m, tea.Batch(metricsTick(), loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch))
 		}
 		return m, metricsTick()
 	case metricsLoadedMsg:
+		if msg.epoch != m.chartEpoch || (msg.period != 0 && msg.period != m.chartPeriodSeconds()) {
+			return m, nil
+		}
 		m.metricsBusy = false
 		if len(m.views) > 0 && msg.key == m.views[m.selected].Database+"\x00"+m.views[m.selected].Name {
 			m.rates, m.metricsReady = msg.rates, true
 		}
 	case overviewLoadedMsg:
+		if msg.epoch != m.chartEpoch || (msg.period != 0 && msg.period != m.chartPeriodSeconds()) {
+			return m, nil
+		}
 		m.overviewBusy = false
 		if msg.database == m.database && msg.revision == m.viewRevision {
 			m.overviewRates, m.overviewReady = msg.rates, true
@@ -292,12 +305,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.choosingDatabase = false
 				if m.overview && len(m.views) > 0 && !m.overviewBusy {
 					m.overviewBusy = true
-					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
 				}
 				if !m.overview && len(m.views) > 0 && !m.metricsBusy {
 					m.metricsBusy = true
 					cmd := m.columnCmdIfActive()
-					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected]), cmd)
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), cmd)
 				}
 				if !m.overview {
 					cmd := m.columnCmdIfActive()
@@ -307,6 +320,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "p":
+			m.chartPeriod = (m.chartPeriod + 1) % 3
+			m.chartEpoch++
+			if len(m.views) > 0 && m.err == nil && !m.loading {
+				if m.overview {
+					m.overviewReady = false
+					m.overviewBusy = true
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+				}
+				m.metricsReady = false
+				m.metricsBusy = true
+				return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch)
+			}
+		case "s":
+			m.chartCommon = !m.chartCommon
 		case "g":
 			if !m.loading && m.err == nil {
 				m.openDependencies()
@@ -347,7 +375,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.overview && len(m.views) > 0 && !m.overviewBusy {
 				m.overviewBusy = true
-				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
+				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
 			}
 			if !m.overview {
 				cmd := m.columnCmdIfActive()
@@ -369,7 +397,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.metricsBusy {
 					m.metricsBusy = true
 					cmd := m.columnCmdIfActive()
-					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected]), cmd)
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), cmd)
 				}
 				cmd := m.columnCmdIfActive()
 				return m, cmd
@@ -786,7 +814,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes · local node"), mutedStyle.Render("[trigger]: inferred insert trigger · [input]: other query input · logs may be incomplete"), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: " + m.chartPeriodLabel() + " · " + m.chartScaleLabel() + " · local node"), mutedStyle.Render("[trigger]: inferred insert trigger · [input]: other query input · logs may be incomplete"), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
@@ -794,7 +822,9 @@ func (m model) overviewLines() ([]string, []int) {
 	if allViews == nil {
 		allViews = m.views
 	}
-	graph, positions := overviewGraphFocused(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database), m.overviewTargetFocus)
+	rates := m.overviewRates
+	rates.SharedScale = m.chartCommon
+	graph, positions := overviewGraphFocused(m.views, rates, m.overviewReady, m.selected, overviewColors(allViews, m.database), m.overviewTargetFocus)
 	for i := range positions {
 		positions[i] += len(header)
 	}
@@ -841,7 +871,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[g] graph  [/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
+	footer := "[p] period  [s] scale  [g] graph  [/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
@@ -894,7 +924,7 @@ func (m model) detailLines() []string {
 				lines = append(lines, errorStyle.Render("Status: "+m.rates.StatusError))
 			}
 		}
-		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: 5 completed minutes."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: "+m.chartPeriodLabel()+"."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
 		if m.metricsReady {
 			for _, err := range m.rates.Errors {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))
@@ -1064,4 +1094,35 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (m model) chartPeriodSeconds() int {
+	switch m.chartPeriod {
+	case 1:
+		return 300
+	case 2:
+		return 3600
+	default:
+		return 60
+	}
+}
+func (m model) chartPeriodLabel() string {
+	switch m.chartPeriod {
+	case 1:
+		return "5 × 5m completed"
+	case 2:
+		return "5 × 1h completed"
+	default:
+		return "5 × 1m completed"
+	}
+}
+func (m model) chartScaleLabel() string {
+	if m.chartCommon {
+		if m.overview {
+			r, w, t := chartMaxima(m.views, m.overviewRates)
+			return fmt.Sprintf("shared max r:%d w:%d total:%d", r, w, t)
+		}
+		return "individual scale (detail)"
+	}
+	return "individual scale"
 }

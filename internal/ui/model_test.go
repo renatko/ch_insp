@@ -716,3 +716,26 @@ func TestDependencyNavigationAndBack(t *testing.T) {
 		t.Fatal("overview not restored")
 	}
 }
+
+func TestChartPeriodAndSharedScale(t *testing.T) {
+	m := model{width: 120, height: 25, overview: true, views: []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}}
+	next, cmd := m.Update(mouseKey("p"))
+	m = next.(model)
+	if m.chartPeriodSeconds() != 300 || cmd == nil {
+		t.Fatal("period did not change")
+	}
+	next, _ = m.Update(overviewLoadedMsg{period: 60, epoch: 0, database: m.database, revision: m.viewRevision})
+	m = next.(model)
+	if m.overviewReady {
+		t.Fatal("stale period accepted")
+	}
+	next, _ = m.Update(mouseKey("s"))
+	m = next.(model)
+	if !m.chartCommon {
+		t.Fatal("shared scale not selected")
+	}
+	bars := historyBarScaled([5]uint64{1, 1, 1, 1, 1}, 8)
+	if bars != "▁▁▁▁▁" {
+		t.Fatalf("wrong shared scale: %s", bars)
+	}
+}

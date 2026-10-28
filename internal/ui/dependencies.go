@@ -137,7 +137,7 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 					m.lineOffset = 0
 					m.metricsReady = false
 					m.metricsBusy = true
-					return m, loadMetrics(m.dsn, v), true
+					return m, loadMetrics(m.dsn, v, m.chartPeriodSeconds(), m.chartEpoch), true
 				}
 			}
 			m.dependencyMessage = "The selected view is no longer in the catalog. Refresh and try again."

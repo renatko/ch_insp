@@ -22,7 +22,7 @@ type Rates struct {
 	StatusError       string
 }
 
-func LoadRates(ctx context.Context, dsn string, view View) Rates {
+func LoadRates(ctx context.Context, dsn string, view View, period int) Rates {
 	rates := Rates{Tables: make(map[string]float64), TableDiagnostics: map[string]MetricDiagnostic{}, MVDiagnostic: MetricDiagnostic{State: MetricUnknown}}
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
@@ -95,12 +95,12 @@ func LoadRates(ctx context.Context, dsn string, view View) Rates {
 	} else if status, ok := statuses[view.Database+"."+view.Name]; ok {
 		rates.Status = &status
 	}
-	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables)
+	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables, period)
 	rates.TableHistory = tableHistory
 	if tableHistoryErr != nil {
 		rates.Errors = append(rates.Errors, "part history: "+tableHistoryErr.Error())
 	}
-	history, historyErr := loadViewHistories(ctx, db, []string{view.Database + "." + view.Name})
+	history, historyErr := loadViewHistories(ctx, db, []string{view.Database + "." + view.Name}, period)
 	if historyErr != nil {
 		rates.Errors = append(rates.Errors, "view history: "+historyErr.Error())
 	} else if value, ok := history[view.Database+"."+view.Name]; ok {

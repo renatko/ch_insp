@@ -41,6 +41,10 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		groups[index].indices = append(groups[index].indices, i)
 	}
 	inputWidth, mvWidth, readWidth := 0, 0, 0
+	var readMax, writeMax, totalMax uint64
+	if rates.SharedScale {
+		readMax, writeMax, totalMax = chartMaxima(views, rates)
+	}
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
 		for _, i := range group.indices {
@@ -80,7 +84,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			if value, ok := rates.History[key]; ok {
 				history = &value
 			}
-			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
+			mvStats := mvRateTextScaled(ready, available, rate.Read, rate.Written, history, readMax, writeMax)
 			if flow.Trigger == "" {
 				mvStats += " · " + mutedStyle.Render("trigger unknown")
 			}
@@ -137,7 +141,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		}
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]
-		total := totalRateText(ready, value, available, history, hasHistory)
+		total := totalRateTextScaled(ready, value, available, history, hasHistory, totalMax)
 		if ready && !available {
 			if label := metricStateLabel(rates.TableDiagnostics[group.target]); label != "" {
 				total += " · " + mutedStyle.Render(label)

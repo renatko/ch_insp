@@ -12,7 +12,7 @@ import (
 // no logged events.
 type ViewHistory struct{ Read, Written [5]uint64 }
 
-func loadViewHistories(ctx context.Context, db *sql.DB, names []string) (map[string]ViewHistory, error) {
+func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int) (map[string]ViewHistory, error) {
 	result := make(map[string]ViewHistory)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
@@ -20,7 +20,7 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string) (map[str
 			end = len(names)
 		}
 		args, marks := queryArgs(names[start:end])
-		query := viewHistoryQuery(marks)
+		query := viewHistoryQuery(marks, seconds)
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return result, err
@@ -49,7 +49,7 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string) (map[str
 }
 
 // loadTableHistories counts rows in successfully created MergeTree parts.
-func loadTableHistories(ctx context.Context, db *sql.DB, names []string) (map[string][5]uint64, error) {
+func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int) (map[string][5]uint64, error) {
 	result := make(map[string][5]uint64)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
@@ -57,7 +57,7 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string) (map[st
 			end = len(names)
 		}
 		args, marks := queryArgs(names[start:end])
-		query := tableHistoryQuery(marks)
+		query := tableHistoryQuery(marks, seconds)
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return result, err
@@ -85,23 +85,35 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string) (map[st
 	return result, nil
 }
 
-func viewHistoryQuery(marks string) string {
+func historyPeriod(seconds int) (int, string) {
+	switch seconds {
+	case 300:
+		return 300, "toStartOfInterval(now(), INTERVAL 5 MINUTE)"
+	case 3600:
+		return 3600, "toStartOfHour(now())"
+	default:
+		return 60, "toStartOfMinute(now())"
+	}
+}
+func viewHistoryQuery(marks string, period int) string {
+	seconds, anchor := historyPeriod(period)
 	fields := []string{"view_name"}
 	for i := 5; i >= 1; i-- {
-		condition := fmt.Sprintf("event_time >= toStartOfMinute(now()) - INTERVAL %d SECOND AND event_time < toStartOfMinute(now()) - INTERVAL %d SECOND", i*60, (i-1)*60)
+		condition := fmt.Sprintf("event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND", anchor, i*seconds, anchor, (i-1)*seconds)
 		fields = append(fields, "sumIf(read_rows, "+condition+")", "sumIf(written_rows, "+condition+")")
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.query_views_log
- WHERE event_date >= today() - 1 AND event_time >= toStartOfMinute(now()) - INTERVAL 300 SECOND AND event_time < toStartOfMinute(now())
+ WHERE event_date >= today() - 1 AND event_time >= ` + anchor + fmt.Sprintf(" - INTERVAL %d SECOND", 5*seconds) + ` AND event_time < ` + anchor + `
  AND view_type = 'Materialized' AND status = 'QueryFinish' AND view_name IN (` + marks + `) GROUP BY view_name`
 }
 
-func tableHistoryQuery(marks string) string {
+func tableHistoryQuery(marks string, period int) string {
+	seconds, anchor := historyPeriod(period)
 	fields := []string{"concat(database, '.', table)"}
 	for i := 5; i >= 1; i-- {
-		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time >= toStartOfMinute(now()) - INTERVAL %d SECOND AND event_time < toStartOfMinute(now()) - INTERVAL %d SECOND)", i*60, (i-1)*60))
+		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND)", anchor, i*seconds, anchor, (i-1)*seconds))
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.part_log
- WHERE event_date >= today() - 1 AND event_time >= toStartOfMinute(now()) - INTERVAL 300 SECOND AND event_time < toStartOfMinute(now())
+ WHERE event_date >= today() - 1 AND event_time >= ` + anchor + fmt.Sprintf(" - INTERVAL %d SECOND", 5*seconds) + ` AND event_time < ` + anchor + `
  AND event_type = 'NewPart' AND error = 0 AND concat(database, '.', table) IN (` + marks + `) GROUP BY database, table`
 }

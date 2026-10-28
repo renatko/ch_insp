@@ -281,7 +281,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"p", "s", "g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

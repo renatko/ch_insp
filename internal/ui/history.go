@@ -9,13 +9,17 @@ import (
 )
 
 // Each chart has its own scale.
-func historyBar(values [5]uint64) string {
+func historyBar(values [5]uint64) string { return historyBarScaled(values, 0) }
+func historyBarScaled(values [5]uint64, sharedMax uint64) string {
 	levels := []rune("▁▂▃▄▅▆▇█")
 	var max uint64
 	for _, v := range values {
 		if v > max {
 			max = v
 		}
+	}
+	if sharedMax > max {
+		max = sharedMax
 	}
 	var b strings.Builder
 	for _, v := range values {
@@ -36,6 +40,9 @@ func historyBar(values [5]uint64) string {
 }
 
 func mvRateText(ready, available bool, read, written float64, history *clickhouse.ViewHistory) string {
+	return mvRateTextScaled(ready, available, read, written, history, 0, 0)
+}
+func mvRateTextScaled(ready, available bool, read, written float64, history *clickhouse.ViewHistory, readMax, writeMax uint64) string {
 	if !ready {
 		return mutedStyle.Render("read/write: loading")
 	}
@@ -43,18 +50,21 @@ func mvRateText(ready, available bool, read, written float64, history *clickhous
 		if history == nil {
 			return mutedStyle.Render("read/write: no data")
 		}
-		return readMetricStyle.Render("read "+historyBar(history.Read)+" no data") + " / " + writeMetricStyle.Render("write "+historyBar(history.Written)+" no data")
+		return readMetricStyle.Render("read "+historyBarScaled(history.Read, readMax)+" no data") + " / " + writeMetricStyle.Render("write "+historyBarScaled(history.Written, writeMax)+" no data")
 	}
 	readText := fmt.Sprintf("read %.1f rows/s", read)
 	writeText := fmt.Sprintf("write %.1f rows/s", written)
 	if history != nil {
-		readText = fmt.Sprintf("read %s %.1f rows/s", historyBar(history.Read), read)
-		writeText = fmt.Sprintf("write %s %.1f rows/s", historyBar(history.Written), written)
+		readText = fmt.Sprintf("read %s %.1f rows/s", historyBarScaled(history.Read, readMax), read)
+		writeText = fmt.Sprintf("write %s %.1f rows/s", historyBarScaled(history.Written, writeMax), written)
 	}
 	return readMetricStyle.Render(readText) + " / " + writeMetricStyle.Render(writeText)
 }
 
 func totalRateText(ready bool, value float64, available bool, history [5]uint64, hasHistory bool) string {
+	return totalRateTextScaled(ready, value, available, history, hasHistory, 0)
+}
+func totalRateTextScaled(ready bool, value float64, available bool, history [5]uint64, hasHistory bool, sharedMax uint64) string {
 	if !ready {
 		return writeMetricStyle.Render("total: loading")
 	}
@@ -64,9 +74,9 @@ func totalRateText(ready bool, value float64, available bool, history [5]uint64,
 	}
 	if hasHistory {
 		if available {
-			text = fmt.Sprintf("total: %s %.1f rows/s", historyBar(history), value)
+			text = fmt.Sprintf("total: %s %.1f rows/s", historyBarScaled(history, sharedMax), value)
 		} else {
-			text = "total: " + historyBar(history) + " no data"
+			text = "total: " + historyBarScaled(history, sharedMax) + " no data"
 		}
 	}
 	return writeMetricStyle.Render(text)
@@ -86,4 +96,28 @@ func metricStateLabel(d clickhouse.MetricDiagnostic) string {
 		return "unknown"
 	}
 	return ""
+}
+
+func chartMaxima(views []clickhouse.View, rates clickhouse.OverviewRates) (uint64, uint64, uint64) {
+	var readMax, writeMax, totalMax uint64
+	for _, v := range views {
+		h := rates.History[v.Database+"."+v.Name]
+		for _, n := range h.Read {
+			if n > readMax {
+				readMax = n
+			}
+		}
+		for _, n := range h.Written {
+			if n > writeMax {
+				writeMax = n
+			}
+		}
+		target := clickhouse.InferFlow(v).Target
+		for _, n := range rates.TableHistory[target] {
+			if n > totalMax {
+				totalMax = n
+			}
+		}
+	}
+	return readMax, writeMax, totalMax
 }
