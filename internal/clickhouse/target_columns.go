@@ -33,7 +33,13 @@ func LoadTargetColumns(ctx context.Context, dsn string, selected View, catalog [
 	if plan.target == nil {
 		return TargetColumns{}, fmt.Errorf("%s has internal storage and no explicit target table", selected.Name)
 	}
-	target := *plan.target
+	return LoadTargetColumnsForTable(ctx, dsn, plan.target.Database, plan.target.Name, catalog)
+}
+
+// LoadTargetColumnsForTable inspects an explicitly selected table, even if
+// it is not the destination of the currently selected view.
+func LoadTargetColumnsForTable(ctx context.Context, dsn, database, table string, catalog []View) (TargetColumns, error) {
+	target := lineageTable{Database: database, Name: table}
 	result := TargetColumns{Database: target.Database, Table: target.Name}
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {

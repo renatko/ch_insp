@@ -828,3 +828,28 @@ func TestStatusIncludesDateForLongObservationWindows(t *testing.T) {
 		t.Fatalf("ambiguous status time: %s", text)
 	}
 }
+
+func TestDependencyTableColumnsAndReturn(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	if m.dependencyTable != "db.src" {
+		t.Fatalf("wrong starting table: %s", m.dependencyTable)
+	}
+	next, cmd := m.Update(mouseKey("t"))
+	m = next.(model)
+	if !m.target || !m.targetLoading || m.targetExplicit != "db.src" || cmd == nil {
+		t.Fatal("table column view did not open")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.dependencies || m.target || m.dependencyTable != "db.src" {
+		t.Fatal("did not return to dependencies")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.overview || m.dependencies {
+		t.Fatal("did not return to overview")
+	}
+}

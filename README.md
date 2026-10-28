@@ -121,7 +121,7 @@ palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `→` to select its target, then `Enter` to open the target table; `↑` / `↓` move between target groups and `←` returns focus to the MV. Moving the mouse over a flow or target selects it; click the selected item to open it. The selected item is highlighted. Use `H` / `L`, Shift+arrow or Shift+mouse wheel for horizontal scrolling; page scrolling is also supported. The overview help stays at the top and shortcuts stay at the bottom while the diagram scrolls. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
-Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. Navigate to connected tables or MVs with Enter and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
+Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
 
 Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters.
 

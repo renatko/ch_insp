@@ -49,7 +49,7 @@ func (m model) dependencyLines() []string {
 		}
 		lines = append(lines, line)
 	}
-	return append(lines, "", mutedStyle.Render("↑/↓ select · Enter open · Backspace previous · g/esc back"))
+	return append(lines, "", mutedStyle.Render("↑/↓ select · Enter open · t: columns · Backspace previous · g/esc back"))
 }
 func (m *model) openDependencies() {
 	if len(m.views) == 0 {
@@ -57,7 +57,9 @@ func (m *model) openDependencies() {
 	}
 	flow := clickhouse.InferFlow(m.views[m.selected])
 	table := ""
-	if m.target && m.targetData.Table != "" {
+	if m.target && m.targetExplicit != "" {
+		table = m.targetExplicit
+	} else if m.target && m.targetData.Table != "" {
 		table = m.targetData.Database + "." + m.targetData.Table
 	} else if m.overviewTargetFocus {
 		table = flow.Target
@@ -70,6 +72,8 @@ func (m *model) openDependencies() {
 		return
 	}
 	m.cancelColumns()
+	m.dependencyReturnTarget = m.target
+	m.dependencyReturnTargetExplicit = m.targetExplicit
 	m.dependencyReturnOverview = m.overview
 	m.overview = false
 	m.target = false
@@ -92,9 +96,29 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch msg.String() {
 	case "g", "esc":
 		m.dependencies = false
+		if m.dependencyReturnTarget {
+			m.target = true
+			m.targetExplicit = m.dependencyReturnTargetExplicit
+			m.dependencyReturnTargetExplicit = ""
+			m.dependencyReturnTarget = false
+			m.lineOffset = 0
+			return m, m.loadTarget(), true
+		}
 		m.overview = m.dependencyReturnOverview
 		m.lineOffset = 0
 		return m, nil, true
+	case "t":
+		if m.dependencyTable == "" {
+			return m, nil, true
+		}
+		m.dependencies = false
+		m.target = true
+		m.targetReturnDependencies = true
+		m.targetReturnOverview = false
+		m.targetExplicit = m.dependencyTable
+		m.lineOffset = 0
+		m.columnOffset = 0
+		return m, m.loadTarget(), true
 	case "backspace":
 		if len(m.dependencyHistory) > 0 {
 			m.dependencyTable = m.dependencyHistory[len(m.dependencyHistory)-1]

@@ -11,6 +11,7 @@ func TestInferFlow(t *testing.T) {
 		sources           []string
 	}{
 		{"join and qualified names", "CREATE MATERIALIZED VIEW db.mv TO db.output AS SELECT * FROM db.events JOIN other.users ON 1", "db.output", []string{"db.events", "other.users"}},
+		{"comma join", "CREATE MATERIALIZED VIEW mv TO out AS SELECT a.id FROM db.events a, db.orders b", "db.out", []string{"db.events", "db.orders"}},
 		{"internal storage", "CREATE MATERIALIZED VIEW mv ENGINE = MergeTree ORDER BY x AS SELECT * FROM source", "internal storage (no TO)", []string{"db.source"}},
 		{"nested query and CTE", "CREATE MATERIALIZED VIEW mv TO out AS WITH x AS (SELECT * FROM raw) SELECT * FROM x JOIN (SELECT * FROM db.other) y ON 1", "db.out", []string{"db.raw", "db.other"}},
 		{"comments literals and function", "CREATE MATERIALIZED VIEW mv TO `dest` AS SELECT 'FROM fake' FROM s3('x') JOIN `db`.`lookup` ON 1 -- FROM ignored", "db.dest", []string{"db.lookup"}},

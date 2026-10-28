@@ -64,14 +64,23 @@ func InferFlow(view View) Flow {
 			flow.Sources = append(flow.Sources, name)
 		}
 	}
-	flow.Trigger = inferTrigger(view)
+	// The token scanner finds sources in unsupported SQL; the scope builder
+	// adds physical inputs from parsed structures such as comma joins.
+	if plan, err := parseLineage(view); err == nil {
+		for _, table := range plan.sources {
+			if !seen[table.key()] {
+				seen[table.key()] = true
+				flow.Sources = append(flow.Sources, table.key())
+			}
+		}
+		flow.Trigger = inferTrigger(tokens, plan)
+	}
 	return flow
 }
 
 // Follow the left-most input through supported CTEs and FROM subqueries.
 // Refreshable and unsupported queries retain an unknown trigger.
-func inferTrigger(view View) string {
-	tokens := sqlTokens(view.Definition)
+func inferTrigger(tokens []string, plan lineagePlan) string {
 	for _, token := range tokens {
 		if strings.EqualFold(token, "SELECT") {
 			break
@@ -79,10 +88,6 @@ func inferTrigger(view View) string {
 		if strings.EqualFold(token, "REFRESH") {
 			return ""
 		}
-	}
-	plan, err := parseLineage(view)
-	if err != nil {
-		return ""
 	}
 	scope := plan.scope
 	for scope != nil && !scope.incomplete && len(scope.relations) > 0 {

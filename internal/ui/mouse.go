@@ -285,6 +285,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) selectView(index int) bool {
 	if m.selected != index {
+		if m.target {
+			m.targetExplicit = ""
+			m.targetReturnDependencies = false
+		}
 		m.selected, m.lineOffset, m.columnOffset, m.metricsReady = index, 0, 0, false
 		return true
 	}

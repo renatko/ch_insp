@@ -41,82 +41,86 @@ type columnsLoadedMsg struct {
 }
 
 type model struct {
-	dsn                      string
-	databases                []string
-	database                 string
-	nodeName                 string
-	choosingNode             bool
-	nodeLoading              bool
-	nodeError                error
-	nodes                    []clickhouse.Node
-	nodeCursor               int
-	nodeRequest              uint64
-	nodeCancel               context.CancelFunc
-	nodeSurvey               *clickhouse.ClusterSurvey
-	nodeDetails              bool
-	nodeDetailsOffset        int
-	allViews                 []clickhouse.View
-	choosingDatabase         bool
-	databaseCursor           int
-	filtering                bool
-	searching                bool
-	searchQuery              string
-	searchCursor             int
-	filterSource             []string
-	filterTarget             []string
-	draftSource              []string
-	draftTarget              []string
-	filterField              int
-	filterCursors            [2]int
-	viewRevision             int
-	views                    []clickhouse.View
-	selected                 int
-	loading                  bool
-	err                      error
-	width                    int
-	height                   int
-	definition               bool
-	dependencies             bool
-	dependencyTable          string
-	dependencyCursor         int
-	dependencyHistory        []string
-	dependencyReturnOverview bool
-	dependencyMessage        string
-	failuresMode             bool
-	failuresReturnOverview   bool
-	failuresLoading          bool
-	failuresError            error
-	failures                 []clickhouse.ViewFailure
-	failureSelected          int
-	failureDetail            bool
-	columns                  bool
-	target                   bool
-	targetReturnOverview     bool
-	targetColumn             int
-	targetLoading            bool
-	targetData               clickhouse.TargetColumns
-	targetError              error
-	columnsLoading           bool
-	columnsData              clickhouse.ColumnLineage
-	columnsError             error
-	columnsCancel            context.CancelFunc
-	columnsRequest           uint64
-	lineOffset               int
-	columnOffset             int
-	rates                    clickhouse.Rates
-	metricsBusy              bool
-	metricsReady             bool
-	overview                 bool
-	chartPeriod              int
-	statusWindow             int
-	chartCommon              bool
-	chartEpoch               uint64
-	overviewTargetFocus      bool
-	overviewBusy             bool
-	overviewReady            bool
-	overviewRates            clickhouse.OverviewRates
-	overviewScroll           int
-	overviewColumn           int
+	dsn                            string
+	databases                      []string
+	database                       string
+	nodeName                       string
+	choosingNode                   bool
+	nodeLoading                    bool
+	nodeError                      error
+	nodes                          []clickhouse.Node
+	nodeCursor                     int
+	nodeRequest                    uint64
+	nodeCancel                     context.CancelFunc
+	nodeSurvey                     *clickhouse.ClusterSurvey
+	nodeDetails                    bool
+	nodeDetailsOffset              int
+	allViews                       []clickhouse.View
+	choosingDatabase               bool
+	databaseCursor                 int
+	filtering                      bool
+	searching                      bool
+	searchQuery                    string
+	searchCursor                   int
+	filterSource                   []string
+	filterTarget                   []string
+	draftSource                    []string
+	draftTarget                    []string
+	filterField                    int
+	filterCursors                  [2]int
+	viewRevision                   int
+	views                          []clickhouse.View
+	selected                       int
+	loading                        bool
+	err                            error
+	width                          int
+	height                         int
+	definition                     bool
+	dependencies                   bool
+	dependencyTable                string
+	dependencyCursor               int
+	dependencyHistory              []string
+	dependencyReturnOverview       bool
+	dependencyReturnTarget         bool
+	dependencyReturnTargetExplicit string
+	dependencyMessage              string
+	failuresMode                   bool
+	failuresReturnOverview         bool
+	failuresLoading                bool
+	failuresError                  error
+	failures                       []clickhouse.ViewFailure
+	failureSelected                int
+	failureDetail                  bool
+	columns                        bool
+	target                         bool
+	targetReturnOverview           bool
+	targetReturnDependencies       bool
+	targetExplicit                 string
+	targetColumn                   int
+	targetLoading                  bool
+	targetData                     clickhouse.TargetColumns
+	targetError                    error
+	columnsLoading                 bool
+	columnsData                    clickhouse.ColumnLineage
+	columnsError                   error
+	columnsCancel                  context.CancelFunc
+	columnsRequest                 uint64
+	lineOffset                     int
+	columnOffset                   int
+	rates                          clickhouse.Rates
+	metricsBusy                    bool
+	metricsReady                   bool
+	overview                       bool
+	chartPeriod                    int
+	statusWindow                   int
+	chartCommon                    bool
+	chartEpoch                     uint64
+	overviewTargetFocus            bool
+	overviewBusy                   bool
+	overviewReady                  bool
+	overviewRates                  clickhouse.OverviewRates
+	overviewScroll                 int
+	overviewColumn                 int
 }
 
 var (
@@ -659,12 +663,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.target {
 				m.cancelColumns()
 				m.target = false
+				if m.targetReturnDependencies {
+					m.dependencies = true
+					m.targetReturnDependencies = false
+					m.targetExplicit = ""
+					m.lineOffset = 0
+					break
+				}
 				m.overview = m.targetReturnOverview
 				m.targetReturnOverview = false
 				m.lineOffset, m.columnOffset = 0, 0
 				break
 			}
 			m.targetReturnOverview = m.overview
+			m.targetReturnDependencies = false
+			m.targetExplicit = ""
 			m.overview = false
 			m.target = true
 			m.dependencies = false

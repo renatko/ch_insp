@@ -26,6 +26,7 @@ func (m *model) loadTarget() tea.Cmd {
 	}
 	m.cancelColumns()
 	view, revision, dsn := m.views[m.selected], m.viewRevision, m.dsn
+	explicit := m.targetExplicit
 	catalog := append([]clickhouse.View(nil), m.allViews...)
 	if catalog == nil {
 		catalog = append(catalog, m.views...)
@@ -38,7 +39,18 @@ func (m *model) loadTarget() tea.Cmd {
 	m.targetColumn = 0
 	return func() tea.Msg {
 		defer cancel()
-		data, err := clickhouse.LoadTargetColumns(ctx, dsn, view, catalog)
+		var data clickhouse.TargetColumns
+		var err error
+		if explicit != "" {
+			database, table, ok := strings.Cut(explicit, ".")
+			if !ok {
+				err = fmt.Errorf("cannot identify database for %s", explicit)
+			} else {
+				data, err = clickhouse.LoadTargetColumnsForTable(ctx, dsn, database, table, catalog)
+			}
+		} else {
+			data, err = clickhouse.LoadTargetColumns(ctx, dsn, view, catalog)
+		}
 		return targetLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, data: data, err: err}
 	}
 }

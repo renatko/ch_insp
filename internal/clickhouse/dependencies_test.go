@@ -23,3 +23,11 @@ func TestTableDependenciesIncludeReadersWritersAndCycles(t *testing.T) {
 		t.Fatalf("wrong directions: %#v", deps)
 	}
 }
+
+func TestCommaJoinDependencyIncludesEachInput(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO out AS SELECT a.id FROM db.a a, db.b b"}
+	deps := TableDependencies("db.b", []View{view})
+	if len(deps) != 1 || deps[0].Direction != "reads" || deps[0].Other != "db.out" {
+		t.Fatalf("missing comma-join input: %#v", deps)
+	}
+}
