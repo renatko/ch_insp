@@ -144,17 +144,17 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 			break
 		}
 	}
-	statuses, statusErr := loadViewStatuses(ctx, db, viewNames)
+	statuses, statusErr := loadViewStatuses(ctx, db, viewNames, dsn)
 	out.Statuses = statuses
 	if statusErr != nil {
 		out.StatusError = statusErr.Error()
 	}
-	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames, period)
+	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames, period, dsn)
 	out.TableHistory = tableHistory
 	if tableHistoryErr != nil {
 		out.Errors = append(out.Errors, "part history: "+tableHistoryErr.Error())
 	}
-	history, historyErr := loadViewHistories(ctx, db, viewNames, period)
+	history, historyErr := loadViewHistories(ctx, db, viewNames, period, dsn)
 	out.History = history
 	if historyErr != nil {
 		out.Errors = append(out.Errors, "view history: "+historyErr.Error())

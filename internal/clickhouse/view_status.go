@@ -20,7 +20,11 @@ type ViewFailure struct {
 	Message, QueryID string
 }
 
-func loadViewStatuses(ctx context.Context, db *sql.DB, names []string) (map[string]ViewStatus, error) {
+func loadViewStatuses(ctx context.Context, db *sql.DB, names []string, dsn string) (map[string]ViewStatus, error) {
+	key := metricCacheKey(dsn, names, 0)
+	if value, ok := statusCache.get(key); ok {
+		return value, nil
+	}
 	result := make(map[string]ViewStatus)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
@@ -48,6 +52,7 @@ func loadViewStatuses(ctx context.Context, db *sql.DB, names []string) (map[stri
 			return result, err
 		}
 	}
+	statusCache.put(key, result, 30*time.Second)
 	return result, nil
 }
 

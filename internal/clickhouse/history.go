@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ViewHistory contains observed row counts in five consecutive 60-second
@@ -12,7 +13,11 @@ import (
 // no logged events.
 type ViewHistory struct{ Read, Written [5]uint64 }
 
-func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int) (map[string]ViewHistory, error) {
+func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string) (map[string]ViewHistory, error) {
+	key := metricCacheKey(dsn, names, seconds)
+	if value, ok := viewHistoryCache.get(key); ok {
+		return value, nil
+	}
 	result := make(map[string]ViewHistory)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
@@ -45,11 +50,16 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 			return result, err
 		}
 	}
+	viewHistoryCache.put(key, result, 20*time.Second)
 	return result, nil
 }
 
 // loadTableHistories counts rows in successfully created MergeTree parts.
-func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int) (map[string][5]uint64, error) {
+func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string) (map[string][5]uint64, error) {
+	key := metricCacheKey(dsn, names, seconds)
+	if value, ok := tableHistoryCache.get(key); ok {
+		return value, nil
+	}
 	result := make(map[string][5]uint64)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
@@ -82,6 +92,7 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds
 			return result, err
 		}
 	}
+	tableHistoryCache.put(key, result, 20*time.Second)
 	return result, nil
 }
 

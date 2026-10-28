@@ -89,18 +89,18 @@ func LoadRates(ctx context.Context, dsn string, view View, period int) Rates {
 	} else {
 		rates.MVDiagnostic = MetricDiagnostic{State: MetricNoEvents}
 	}
-	statuses, statusErr := loadViewStatuses(ctx, db, []string{view.Database + "." + view.Name})
+	statuses, statusErr := loadViewStatuses(ctx, db, []string{view.Database + "." + view.Name}, dsn)
 	if statusErr != nil {
 		rates.StatusError = statusErr.Error()
 	} else if status, ok := statuses[view.Database+"."+view.Name]; ok {
 		rates.Status = &status
 	}
-	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables, period)
+	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables, period, dsn)
 	rates.TableHistory = tableHistory
 	if tableHistoryErr != nil {
 		rates.Errors = append(rates.Errors, "part history: "+tableHistoryErr.Error())
 	}
-	history, historyErr := loadViewHistories(ctx, db, []string{view.Database + "." + view.Name}, period)
+	history, historyErr := loadViewHistories(ctx, db, []string{view.Database + "." + view.Name}, period, dsn)
 	if historyErr != nil {
 		rates.Errors = append(rates.Errors, "view history: "+historyErr.Error())
 	} else if value, ok := history[view.Database+"."+view.Name]; ok {

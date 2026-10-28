@@ -89,7 +89,7 @@ Simple `SELECT *` inside a CTE or FROM subquery can be traced when a single
 physical source and its column metadata are available. Wildcards over multiple
 inputs, wildcard modifiers and settings-dependent columns remain uncertain.
 
-The diagram refreshes rates approximately every 5 seconds. Rates are local-node
+The diagram refreshes rates approximately every 5 seconds. Completed-interval histories are cached for up to 20 seconds and MV status for up to 30 seconds to limit repeated scans of system logs. Rates are local-node
 averages over the preceding 60 seconds, derived from asynchronously flushed
 system logs, so they can lag and undercount (including when query logging is
 sampled). Metrics use blue for `read` and `inserted`, and amber for `write` and
