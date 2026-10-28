@@ -549,3 +549,33 @@ func TestOverviewTargetKeyboardNavigation(t *testing.T) {
 		t.Fatal("left did not return focus to MV")
 	}
 }
+
+func TestOverviewTargetSelectionHasEvenWidth(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+	for _, target := range []string{"dst", "very_long_destination_name_exceeding_statistics_width"} {
+		view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO " + target + " AS SELECT * FROM src"}
+		rates := clickhouse.OverviewRates{Tables: map[string]float64{"db." + target: 20.1}, TableHistory: map[string][5]uint64{"db." + target: {1, 2, 3, 4, 5}}}
+		lines, positions := overviewGraphFocused([]clickhouse.View{view}, rates, true, 0, map[string]lipgloss.Color{}, true)
+		bg := regexp.MustCompile("\\x1b\\[[0-9;]*48;2;51;65;85m")
+		extent := func(line string) (int, int) {
+			matches := bg.FindAllStringIndex(line, -1)
+			if len(matches) == 0 {
+				t.Fatalf("missing target selection: %q", line)
+			}
+			first := lipgloss.Width(line[:matches[0][0]])
+			last := matches[len(matches)-1][1]
+			end := strings.Index(line[last:], "\x1b[0m")
+			if end < 0 {
+				t.Fatalf("missing reset: %q", line)
+			}
+			return first, lipgloss.Width(line[:last+end])
+		}
+		firstStart, firstEnd := extent(lines[positions[0]])
+		secondStart, secondEnd := extent(lines[positions[0]+1])
+		if firstStart != secondStart || firstEnd != secondEnd {
+			t.Errorf("uneven selection for %s: %d:%d vs %d:%d", target, firstStart, firstEnd, secondStart, secondEnd)
+		}
+	}
+}

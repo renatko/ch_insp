@@ -109,6 +109,8 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]
 		total := totalRateText(ready, value, available, history, hasHistory)
+		targetName := shortName(group.target)
+		targetWidth := maxInt(lipgloss.Width(targetName), lipgloss.Width(total))
 		for j, row := range rows {
 			positions[row.index] = len(lines)
 			rowStyle, statsStyle, markerStyle := groupStyle, mutedStyle, accentStyle
@@ -140,7 +142,11 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				if targetSelected {
 					targetStyle = targetStyle.Background(selectionBackground).Bold(true)
 				}
-				line += " " + targetStyle.Render(shortName(group.target))
+				name := targetName
+				if targetSelected {
+					name = pad(name, targetWidth)
+				}
+				line += " " + targetStyle.Render(name)
 			}
 			lines = append(lines, line)
 			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth))
@@ -154,7 +160,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			}
 			if j == center {
 				if targetSelected {
-					stats += " " + restoreMetricBackground(mutedStyle.Background(selectionBackground).Render(total))
+					stats += " " + restoreMetricBackground(mutedStyle.Background(selectionBackground).Render(pad(total, targetWidth)))
 				} else {
 					stats += mutedStyle.Render(" " + total)
 				}
