@@ -11,6 +11,21 @@ export CLICKHOUSE_URL='clickhouse://user:password@localhost:9000/default'
 go run .
 ```
 
+Alternatively, pass connection options on the command line:
+
+```sh
+go run . --host localhost --port 9000 --user default --database default
+```
+
+Available options are `--url`, `--host`, `--port`, `--user`, `--password`,
+`--database` and `--secure` (TLS). Run `go run . --help` for usage.
+`--url` overrides `CLICKHOUSE_URL`, and individual options override the
+corresponding URL fields. With individual options and no URL, defaults are
+`localhost:9000`, user `default` and database `default`; without any connection
+settings the application asks for a URL. A password passed with `--password`
+or `--url` can be visible in process arguments and shell history. For a
+password, prefer setting `CLICKHOUSE_URL` in the environment.
+
 The application reads `system.databases` and `system.tables` to list databases and materialized views and show each
 view's inferred source-to-view-to-target diagram and `CREATE` definition. It only runs read-only queries. The
 configured ClickHouse user should have permission to read the relevant system
