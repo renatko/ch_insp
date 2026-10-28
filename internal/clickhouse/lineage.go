@@ -84,7 +84,8 @@ func tableFromIdentifier(id *parser.TableIdentifier, fallback string) lineageTab
 	return lineageTable{Database: database, Name: id.Table.Name}
 }
 
-// LoadColumnLineage only reads system.columns; it never executes the view SELECT.
+// LoadColumnLineage reads metadata and may analyze the SELECT using EXPLAIN.
+// It never executes the view SELECT.
 func LoadColumnLineage(ctx context.Context, dsn string, view View) (ColumnLineage, error) {
 	plan, err := parseLineage(view)
 	if err != nil {
@@ -135,7 +136,9 @@ func LoadColumnLineage(ctx context.Context, dsn string, view View) (ColumnLineag
 		}
 		metadata[table.key()] = cols
 	}
-	return analyzeColumns(view, plan, metadata, warnings), nil
+	result := analyzeColumns(view, plan, metadata, warnings)
+	enrichWithExplain(ctx, db, view, plan, metadata, &result)
+	return result, nil
 }
 
 type sqlReference struct{ qualifier, name string }

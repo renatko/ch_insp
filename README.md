@@ -51,10 +51,10 @@ name. The top-level JOIN, PREWHERE, WHERE, GROUP BY and HAVING clauses are
 shown explicitly, formatted by the parser; the original SQL remains available
 with `d`. Additional references from JOIN, WHERE, GROUP BY and similar clauses and
 target columns not identified in the SELECT are listed separately. The feature
-reads `system.columns` and parses the stored definition; it does not execute the
-view's SELECT. It needs permission to read the relevant column metadata.
+reads `system.columns` and parses the stored definition. For a restricted subset
+of queries it also uses `EXPLAIN QUERY TREE`; it does not execute the view's SELECT. It needs permission to read the relevant column metadata.
 
-Column lineage is a best-effort static analysis, not an execution trace. It
+Column lineage is a best-effort analysis, not an execution trace. It
 follows supported SELECT and WITH aliases, CTEs, FROM subqueries, scalar
 subqueries and lambda parameters back to source columns; intermediate
 transformations are shown as `via` expressions. Ambiguous or unresolved
@@ -69,7 +69,13 @@ When a reference cannot be resolved, the column view distinguishes missing
 and unsupported wildcard or query constructs. For missing metadata it names
 the affected table and preserves ClickHouse errors in the warnings. A collision
 between an alias and a source column can depend on
-`prefer_column_name_to_alias`; the app does not assume which setting was used.
+`prefer_column_name_to_alias`. When safe to do so, the app uses the current
+ClickHouse analyzer and connection settings to resolve uncertain output columns.
+This may differ from settings in effect when the view was created. Server analysis
+is restricted to supported query scopes without function calls or scalar
+subqueries, a matching current database, and local supported table engines;
+otherwise static analysis remains in use. Query-tree output varies by ClickHouse
+version, and unrecognized or incomplete trees are left unresolved.
 Simple `SELECT *` inside a CTE or FROM subquery can be traced when a single
 physical source and its column metadata are available. Wildcards over multiple
 inputs, wildcard modifiers and settings-dependent columns remain uncertain.
