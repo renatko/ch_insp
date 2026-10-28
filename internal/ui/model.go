@@ -37,61 +37,67 @@ type columnsLoadedMsg struct {
 }
 
 type model struct {
-	dsn                    string
-	databases              []string
-	database               string
-	allViews               []clickhouse.View
-	choosingDatabase       bool
-	databaseCursor         int
-	filtering              bool
-	searching              bool
-	searchQuery            string
-	searchCursor           int
-	filterSource           []string
-	filterTarget           []string
-	draftSource            []string
-	draftTarget            []string
-	filterField            int
-	filterCursors          [2]int
-	viewRevision           int
-	views                  []clickhouse.View
-	selected               int
-	loading                bool
-	err                    error
-	width                  int
-	height                 int
-	definition             bool
-	failuresMode           bool
-	failuresReturnOverview bool
-	failuresLoading        bool
-	failuresError          error
-	failures               []clickhouse.ViewFailure
-	failureSelected        int
-	failureDetail          bool
-	columns                bool
-	target                 bool
-	targetReturnOverview   bool
-	targetColumn           int
-	targetLoading          bool
-	targetData             clickhouse.TargetColumns
-	targetError            error
-	columnsLoading         bool
-	columnsData            clickhouse.ColumnLineage
-	columnsError           error
-	columnsCancel          context.CancelFunc
-	columnsRequest         uint64
-	lineOffset             int
-	columnOffset           int
-	rates                  clickhouse.Rates
-	metricsBusy            bool
-	metricsReady           bool
-	overview               bool
-	overviewTargetFocus    bool
-	overviewBusy           bool
-	overviewReady          bool
-	overviewRates          clickhouse.OverviewRates
-	overviewScroll         int
-	overviewColumn         int
+	dsn                      string
+	databases                []string
+	database                 string
+	allViews                 []clickhouse.View
+	choosingDatabase         bool
+	databaseCursor           int
+	filtering                bool
+	searching                bool
+	searchQuery              string
+	searchCursor             int
+	filterSource             []string
+	filterTarget             []string
+	draftSource              []string
+	draftTarget              []string
+	filterField              int
+	filterCursors            [2]int
+	viewRevision             int
+	views                    []clickhouse.View
+	selected                 int
+	loading                  bool
+	err                      error
+	width                    int
+	height                   int
+	definition               bool
+	dependencies             bool
+	dependencyTable          string
+	dependencyCursor         int
+	dependencyHistory        []string
+	dependencyReturnOverview bool
+	dependencyMessage        string
+	failuresMode             bool
+	failuresReturnOverview   bool
+	failuresLoading          bool
+	failuresError            error
+	failures                 []clickhouse.ViewFailure
+	failureSelected          int
+	failureDetail            bool
+	columns                  bool
+	target                   bool
+	targetReturnOverview     bool
+	targetColumn             int
+	targetLoading            bool
+	targetData               clickhouse.TargetColumns
+	targetError              error
+	columnsLoading           bool
+	columnsData              clickhouse.ColumnLineage
+	columnsError             error
+	columnsCancel            context.CancelFunc
+	columnsRequest           uint64
+	lineOffset               int
+	columnOffset             int
+	rates                    clickhouse.Rates
+	metricsBusy              bool
+	metricsReady             bool
+	overview                 bool
+	overviewTargetFocus      bool
+	overviewBusy             bool
+	overviewReady            bool
+	overviewRates            clickhouse.OverviewRates
+	overviewScroll           int
+	overviewColumn           int
 }
 
 var (
@@ -254,6 +260,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.searching {
 			return m.updateSearch(msg)
 		}
+		if !m.filtering && !m.choosingDatabase {
+			if next, cmd, handled := m.updateDependencyKey(msg); handled {
+				return next, cmd
+			}
+		}
 		if m.filtering {
 			return m.updateFilter(msg)
 		}
@@ -296,6 +307,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "g":
+			if !m.loading && m.err == nil {
+				m.openDependencies()
+			}
+			return m, nil
 		case "/":
 			if !m.loading && m.err == nil {
 				m.searching = true
@@ -312,6 +328,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lineOffset, m.columnOffset = 0, 0
 			return m, loadViews(m.dsn)
 		case "o":
+			m.dependencies = false
 			if m.failuresMode {
 				m.cancelColumns()
 				m.failuresMode = false
@@ -461,6 +478,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.failuresReturnOverview = m.overview
 			m.failuresMode = true
+			m.dependencies = false
 			m.target = false
 			m.columns = false
 			m.definition = false
@@ -483,6 +501,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.targetReturnOverview = m.overview
 			m.overview = false
 			m.target = true
+			m.dependencies = false
 			m.failuresMode = false
 			m.columns = false
 			m.definition = false
@@ -707,7 +726,7 @@ func (m model) renderView() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("[e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
 		return b.String()
 	}
 
@@ -725,7 +744,7 @@ func (m model) renderView() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
 	return b.String()
 }
 
@@ -822,7 +841,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
+	footer := "[g] graph  [/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
@@ -848,7 +867,13 @@ func (m model) renderDetail(width, height int) string {
 func (m model) detailLines() []string {
 	view := m.views[m.selected]
 	var lines []string
-	if m.failuresMode {
+	if m.dependencies {
+		lines := m.dependencyLines()
+		if m.dependencyMessage != "" {
+			lines = append(lines, errorStyle.Render(m.dependencyMessage))
+		}
+		return splitColumnLines(lines)
+	} else if m.failuresMode {
 		return splitColumnLines(m.failureLines())
 	} else if m.target {
 		return splitColumnLines(m.targetLines())

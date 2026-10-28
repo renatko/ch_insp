@@ -108,6 +108,25 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.dependencies && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+			contentTop := 3
+			height := maxInt(5, m.height-8)
+			if m.width < 70 {
+				contentTop = 4
+				height = maxInt(5, m.height-9)
+			}
+			lines := m.detailLines()
+			offset := minInt(m.lineOffset, maxInt(0, len(lines)-maxInt(1, height-2)))
+			index := msg.Y - contentTop + offset - 4
+			items := m.dependencyItems()
+			if msg.Y >= contentTop && msg.Y < contentTop+height-2 && index >= 0 && index < len(items) {
+				if index == m.dependencyCursor {
+					return m.Update(mouseKey("enter"))
+				}
+				m.dependencyCursor = index
+				return m, nil
+			}
+		}
 		if m.failuresMode && !m.failuresLoading && !m.failureDetail && m.failuresError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
 			contentTop := 3
 			height := maxInt(5, m.height-8)
@@ -262,7 +281,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

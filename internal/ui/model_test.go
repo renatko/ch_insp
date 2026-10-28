@@ -680,3 +680,39 @@ func TestMetricDiagnosticStatesAreVisible(t *testing.T) {
 		}
 	}
 }
+
+func TestDependencyNavigationAndBack(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "a", Definition: "CREATE MATERIALIZED VIEW a TO b AS SELECT * FROM a"}, {Database: "db", Name: "b", Definition: "CREATE MATERIALIZED VIEW b TO a AS SELECT * FROM b"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	if !m.dependencies || m.dependencyTable != "db.a" {
+		t.Fatal("dependencies not opened")
+	}
+	items := m.dependencyItems()
+	idx := -1
+	for i, item := range items {
+		if item.table == "db.b" {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		t.Fatalf("target edge missing: %#v", items)
+	}
+	m.dependencyCursor = idx
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.dependencyTable != "db.b" {
+		t.Fatal("target not opened")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = next.(model)
+	if m.dependencyTable != "db.a" {
+		t.Fatal("history did not return")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.overview || m.dependencies {
+		t.Fatal("overview not restored")
+	}
+}
