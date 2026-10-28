@@ -48,6 +48,14 @@ Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
+Press `f` to filter views by source and/or target table. Enter part of a table
+name (or a qualified `database.table` name); matching ignores case. When both
+fields are filled, both must match. Use Tab to move between fields, Enter to
+apply, Ctrl+X to clear both filters, and Esc to cancel. The filter applies to
+the list and overview and remains active when switching databases. Filtering
+uses the SQL-inferred relationships described above; complex SQL or internal
+targets may therefore not be matched.
+
 Both system logs must be configured and readable by the user. View logging
 also requires `log_query_views` for the queries that execute the view. An
 empty window is shown as `no data` because disabled or delayed logging cannot
@@ -58,6 +66,7 @@ cover the connected server only, not the entire cluster or replicas.
 
 - `↑` / `↓` or `j` / `k`: select a view
 - `b`: choose a database; use `↑` / `↓` and `Enter` to switch, `Esc` to cancel
+- `f`: edit source and target table filters
 - `o`: switch between the overview and selected MV; `Enter` opens the selected MV
 - `r`: reload view metadata
 - `d`: switch between the diagram and SQL definition

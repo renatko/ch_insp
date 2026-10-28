@@ -19,6 +19,15 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.loading || m.err != nil {
 			return m, nil
 		}
+		if m.filtering {
+			if msg.Y == 5 {
+				m.filterField = 0
+			}
+			if msg.Y == 7 {
+				m.filterField = 1
+			}
+			return m, nil
+		}
 		if m.choosingDatabase {
 			limit := maxInt(1, m.height-8)
 			start := maxInt(0, m.databaseCursor-limit+1)
@@ -62,6 +71,9 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.loading || m.err != nil {
+		return m, nil
+	}
+	if m.filtering {
 		return m, nil
 	}
 	if msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelRight || (msg.Shift && (msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown)) {
@@ -121,6 +133,8 @@ func mouseKey(key string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyLeft}
 	case "right":
 		return tea.KeyMsg{Type: tea.KeyRight}
+	case "ctrl+x":
+		return tea.KeyMsg{Type: tea.KeyCtrlX}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 	}
@@ -133,7 +147,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"o", "enter", "b", "d", "r", "esc", "q"}
+	keys := []string{"f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

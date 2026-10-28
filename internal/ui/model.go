@@ -25,6 +25,7 @@ type metricsLoadedMsg struct {
 }
 type overviewLoadedMsg struct {
 	database string
+	revision int
 	rates    clickhouse.OverviewRates
 }
 
@@ -35,6 +36,13 @@ type model struct {
 	allViews         []clickhouse.View
 	choosingDatabase bool
 	databaseCursor   int
+	filtering        bool
+	filterSource     string
+	filterTarget     string
+	draftSource      string
+	draftTarget      string
+	filterField      int
+	viewRevision     int
 	views            []clickhouse.View
 	selected         int
 	loading          bool
@@ -88,12 +96,12 @@ func loadMetrics(dsn string, view clickhouse.View) tea.Cmd {
 	}
 }
 
-func loadOverview(dsn, database string, views []clickhouse.View) tea.Cmd {
+func loadOverview(dsn, database string, views []clickhouse.View, revision int) tea.Cmd {
 	views = append([]clickhouse.View(nil), views...)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return overviewLoadedMsg{database: database, rates: clickhouse.LoadOverviewRates(ctx, dsn, views)}
+		return overviewLoadedMsg{database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views)}
 	}
 }
 
@@ -129,7 +137,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil && m.overview && len(m.views) > 0 && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, loadOverview(m.dsn, m.database, m.views)
+			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 		}
 		if msg.err == nil && !m.overview && len(m.views) > 0 && !m.metricsBusy {
 			m.metricsBusy = true
@@ -138,7 +146,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case metricsTickMsg:
 		if m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.overviewBusy {
 			m.overviewBusy = true
-			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views))
+			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision))
 		}
 		if !m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.metricsBusy {
 			m.metricsBusy = true
@@ -152,12 +160,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case overviewLoadedMsg:
 		m.overviewBusy = false
-		if msg.database == m.database {
+		if msg.database == m.database && msg.revision == m.viewRevision {
 			m.overviewRates, m.overviewReady = msg.rates, true
 		}
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.filtering {
+			return m.updateFilter(msg)
+		}
 		if m.choosingDatabase {
 			switch msg.String() {
 			case "ctrl+c", "q":
@@ -180,7 +191,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.choosingDatabase = false
 				if m.overview && len(m.views) > 0 && !m.overviewBusy {
 					m.overviewBusy = true
-					return m, loadOverview(m.dsn, m.database, m.views)
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 				}
 				if !m.overview && len(m.views) > 0 && !m.metricsBusy {
 					m.metricsBusy = true
@@ -201,7 +212,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overviewScroll, m.overviewColumn = 0, 0
 			if m.overview && len(m.views) > 0 && !m.overviewBusy {
 				m.overviewBusy = true
-				return m, loadOverview(m.dsn, m.database, m.views)
+				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 			}
 		case "enter":
 			if m.overview && len(m.views) > 0 {
@@ -223,6 +234,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						break
 					}
 				}
+			}
+		case "f":
+			if !m.loading && m.err == nil {
+				m.filtering = true
+				m.draftSource, m.draftTarget = m.filterSource, m.filterTarget
+				m.filterField = 0
 			}
 		case "up", "k":
 			if m.selected > 0 {
@@ -305,9 +322,10 @@ func contains(items []string, value string) bool {
 }
 
 func (m *model) filterViews() {
+	m.viewRevision++
 	m.views = nil
 	for _, view := range m.allViews {
-		if view.Database == m.database {
+		if view.Database == m.database && matchesFlow(view, m.filterSource, m.filterTarget) {
 			m.views = append(m.views, view)
 		}
 	}
@@ -353,6 +371,9 @@ func (m model) View() string {
 		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
 		return b.String()
 	}
+	if m.filtering {
+		return b.String() + m.renderFilter(width)
+	}
 	if m.choosingDatabase {
 		b.WriteString(accentStyle.Render("SELECT DATABASE"))
 		b.WriteString("\n\n")
@@ -389,7 +410,7 @@ func (m model) View() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("[o] overview  [b] database  [d] SQL  [r] refresh  [q] quit", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate("[f] filter  [o] overview  [b] database  [d] SQL  [r] refresh  [q] quit", width, "…")))
 		return b.String()
 	}
 
@@ -407,16 +428,20 @@ func (m model) View() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[o] overview  [b] database  [d] SQL  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[f] filter  [o] overview  [b] database  [d] SQL  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
 	return b.String()
 }
 
 func (m model) renderList(width, height int) string {
 	var b strings.Builder
-	b.WriteString(accentStyle.Render("MATERIALIZED VIEWS"))
+	title := "MATERIALIZED VIEWS"
+	if m.filterSource != "" || m.filterTarget != "" {
+		title += " · FILTERED"
+	}
+	b.WriteString(accentStyle.Render(truncate(title, width)))
 	b.WriteString("\n")
 	if len(m.views) == 0 {
-		b.WriteString(mutedStyle.Render("No materialized views found."))
+		b.WriteString(mutedStyle.Render("No matching materialized views."))
 		return b.String()
 	}
 	limit := maxInt(1, height-2)
@@ -441,9 +466,13 @@ func (m model) renderList(width, height int) string {
 
 // overviewLines renders a single graph for the selected database.
 func (m model) overviewLines() ([]string, []int) {
-	header := []string{accentStyle.Render("FLOW OVERVIEW"), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Views sharing a target are grouped; inputs may repeat."), ""}
+	title := "FLOW OVERVIEW"
+	if m.filterSource != "" || m.filterTarget != "" {
+		title += " · FILTERED"
+	}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Views sharing a target are grouped; inputs may repeat."), ""}
 	if len(m.views) == 0 {
-		return append(header, mutedStyle.Render("No materialized views in this database.")), nil
+		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
 	graph, positions := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected)
 	for i := range positions {
@@ -481,7 +510,7 @@ func (m model) renderOverview(width int) string {
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
-	footer := "[o] back  [enter] open MV  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll"
+	footer := "[f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
 }
 
