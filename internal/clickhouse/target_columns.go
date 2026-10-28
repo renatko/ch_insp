@@ -19,8 +19,8 @@ type TargetColumn struct {
 	Writers                                    []TargetWriter
 }
 type TargetWriter struct {
-	View, Expression string
-	Inputs           []string
+	View, Expression, ViewType string
+	Inputs                     []string
 }
 
 // LoadTargetColumns discovers all visible materialized views targeting the
@@ -103,7 +103,7 @@ func addTargetWriters(target *TargetColumns, view string, lineage ColumnLineage)
 		}
 		for i := range target.Columns {
 			if target.Columns[i].Name == mapping.Output {
-				target.Columns[i].Writers = append(target.Columns[i].Writers, TargetWriter{View: view, Expression: mapping.Expression, Inputs: append([]string(nil), mapping.Inputs...)})
+				target.Columns[i].Writers = append(target.Columns[i].Writers, TargetWriter{View: view, Expression: mapping.Expression, ViewType: mapping.ViewType, Inputs: append([]string(nil), mapping.Inputs...)})
 				break
 			}
 		}

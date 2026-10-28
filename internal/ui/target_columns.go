@@ -9,6 +9,7 @@ import (
 	"chinspector/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type targetLoadedMsg struct {
@@ -89,7 +90,9 @@ func (m model) targetLines() []string {
 		if i == m.targetColumn {
 			prefix = "› "
 		}
-		row := prefix + c.Name + "  " + c.Type
+		base := prefix + c.Name + "  "
+		shortType := ansi.Truncate(c.Type, 20, "…")
+		row := base + shortType
 		suffix := "  · no MV"
 		if c.DefaultKind != "" {
 			suffix += " · " + c.DefaultKind
@@ -100,7 +103,11 @@ func (m model) targetLines() []string {
 		if lipgloss.Width(row+suffix) > m.detailWidth() && len(names) > 0 {
 			suffix = fmt.Sprintf("  ← %d MV", len(names))
 		}
-		row += suffix
+		available := m.detailWidth() - lipgloss.Width(base+suffix)
+		if available > 0 && lipgloss.Width(shortType) > available {
+			shortType = ansi.Truncate(c.Type, available, "…")
+		}
+		row = base + shortType + suffix
 		if i == m.targetColumn {
 			lines = append(lines, activeStyle.Render(row))
 		} else {
@@ -113,7 +120,7 @@ func (m model) targetLines() []string {
 	lines = append(lines, "")
 	if len(data.Columns) > 0 && m.targetColumn >= 0 && m.targetColumn < len(data.Columns) {
 		c := data.Columns[m.targetColumn]
-		lines = append(lines, accentStyle.Render(c.Name+"  "+c.Type))
+		lines = append(lines, accentStyle.Render(c.Name), "  TARGET TYPE: "+c.Type)
 		if c.DefaultKind != "" {
 			lines = append(lines, mutedStyle.Render("  "+c.DefaultKind+" "+c.DefaultExpression))
 		}
@@ -126,6 +133,9 @@ func (m model) targetLines() []string {
 				name = strings.TrimPrefix(name, m.database+".")
 			}
 			lines = append(lines, viewStyle.Render("  ← "+name), "    SQL: "+w.Expression)
+			if w.ViewType != "" && c.Type != "" && w.ViewType != c.Type {
+				lines = append(lines, "    MV TYPE: "+w.ViewType+" → target: "+c.Type)
+			}
 			for _, input := range w.Inputs {
 				lines = append(lines, "    "+styleColumnPath(input))
 			}

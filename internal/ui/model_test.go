@@ -423,3 +423,16 @@ func TestTargetColumnWindowAndNarrowWriterCount(t *testing.T) {
 		t.Fatalf("unexpected compact list: %s", content)
 	}
 }
+
+func TestTargetTypesCompactAndShowDifferences(t *testing.T) {
+	targetType := "Nullable(LowCardinality(String))"
+	m := model{width: 100, height: 30, database: "db", target: true, views: []clickhouse.View{{Name: "mv"}}, targetData: clickhouse.TargetColumns{Columns: []clickhouse.TargetColumn{{Name: "text", Type: targetType, Writers: []clickhouse.TargetWriter{{View: "db.diff", ViewType: "String"}, {View: "db.same", ViewType: targetType}, {View: "db.unknown"}}}}}}
+	lines := m.targetLines()
+	if !strings.Contains(lines[4], "…") || strings.Contains(lines[4], targetType) {
+		t.Fatalf("type was not compacted: %s", lines[4])
+	}
+	content := strings.Join(lines, "\n")
+	if !strings.Contains(content, "TARGET TYPE: "+targetType) || !strings.Contains(content, "MV TYPE: String → target: "+targetType) || strings.Count(content, "MV TYPE:") != 1 {
+		t.Fatalf("incorrect type details: %s", content)
+	}
+}
