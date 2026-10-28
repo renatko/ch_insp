@@ -21,6 +21,9 @@ func TestColumnLineageSelectJoinAndTargetDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := analyzeColumns(view, plan, lineageFixture(), nil)
+	if len(result.Joins) != 1 || result.Joins[0] != "JOIN db.orders AS o ON e.id = o.id" || result.Where != "WHERE e.created_at > now()" || result.GroupBy != "GROUP BY e.id, e.name" {
+		t.Fatalf("missing conditions: joins=%v where=%q group=%q", result.Joins, result.Where, result.GroupBy)
+	}
 	if len(result.Columns) != 3 || len(plan.sources) != 2 {
 		t.Fatalf("unexpected lineage: %#v", result)
 	}
@@ -38,6 +41,39 @@ func TestColumnLineageSelectJoinAndTargetDefaults(t *testing.T) {
 	}
 	if len(result.TargetExtras) != 1 || !strings.Contains(result.TargetExtras[0], "DEFAULT 'x'") {
 		t.Fatalf("missing target default: %v", result.TargetExtras)
+	}
+}
+
+func TestTopLevelConditionsMultipleJoinsAndNoClauses(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM a LEFT JOIN b ON a.id = b.id INNER JOIN c USING (id) PREWHERE a.id > 2 WHERE b.val > 0 GROUP BY a.id HAVING count() > 1"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := analyzeColumns(view, plan, nil, nil)
+	if len(got.Joins) != 2 || got.Joins[0] != "LEFT JOIN b ON a.id = b.id" || got.Joins[1] != "INNER JOIN c USING id" || got.Prewhere != "PREWHERE a.id > 2" || got.Where != "WHERE b.val > 0" || got.GroupBy != "GROUP BY a.id" || got.Having != "HAVING count() > 1" {
+		t.Fatalf("conditions missing: %#v", got)
+	}
+	view.Definition = "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a FROM src"
+	plan, err = parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = analyzeColumns(view, plan, nil, nil)
+	if len(got.Joins) != 0 || got.Where != "" || got.GroupBy != "" || got.Prewhere != "" || got.Having != "" {
+		t.Fatalf("invented conditions: %#v", got)
+	}
+}
+
+func TestCommaJoinAppearsInConditions(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM a, b WHERE a.id = b.id"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := analyzeColumns(view, plan, nil, nil)
+	if len(got.Joins) != 1 || got.Joins[0] != "COMMA JOIN b" || got.Where != "WHERE a.id = b.id" {
+		t.Fatalf("comma join missing: %#v", got)
 	}
 }
 

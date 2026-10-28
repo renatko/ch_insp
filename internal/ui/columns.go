@@ -19,6 +19,31 @@ func (m model) columnLines() []string {
 	if len(m.columnsData.Warnings) > 0 {
 		lines = append(lines, "")
 	}
+	lines = append(lines, accentStyle.Render("QUERY CONDITIONS"), mutedStyle.Render("Outer SELECT · SQL formatted by parser"))
+	if len(m.columnsData.Joins) == 0 {
+		lines = append(lines, mutedStyle.Render("  JOIN: (none)"))
+	} else {
+		for _, join := range m.columnsData.Joins {
+			lines = append(lines, "  "+join)
+		}
+	}
+	if m.columnsData.Prewhere != "" {
+		lines = append(lines, "  "+m.columnsData.Prewhere)
+	}
+	if m.columnsData.Where == "" {
+		lines = append(lines, mutedStyle.Render("  WHERE: (none)"))
+	} else {
+		lines = append(lines, "  "+m.columnsData.Where)
+	}
+	if m.columnsData.GroupBy == "" {
+		lines = append(lines, mutedStyle.Render("  GROUP BY: (none)"))
+	} else {
+		lines = append(lines, "  "+m.columnsData.GroupBy)
+	}
+	if m.columnsData.Having != "" {
+		lines = append(lines, "  "+m.columnsData.Having)
+	}
+	lines = append(lines, "")
 	for _, column := range m.columnsData.Columns {
 		output := column.Output
 		if column.ViewType != "" {

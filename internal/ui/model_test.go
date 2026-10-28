@@ -314,14 +314,14 @@ func TestColumnDetailsNavigationAndStaleResults(t *testing.T) {
 	if !m.columns || !m.columnsLoading || cmd == nil {
 		t.Fatal("columns mode did not start loading")
 	}
-	data := clickhouse.ColumnLineage{Columns: []clickhouse.ColumnMapping{{Output: "id", Expression: "id", Inputs: []string{"src.id (UInt64)"}, ViewType: "UInt64", TargetType: "UInt64", TargetStatus: "matched by name"}}, AdditionalReads: []string{"src.key (String)"}, TargetExtras: []string{"extra (String) DEFAULT 'x'"}}
+	data := clickhouse.ColumnLineage{Columns: []clickhouse.ColumnMapping{{Output: "id", Expression: "id", Inputs: []string{"src.id (UInt64)"}, ViewType: "UInt64", TargetType: "UInt64", TargetStatus: "matched by name"}}, Joins: []string{"LEFT JOIN users ON src.id = users.id"}, Where: "WHERE src.id > 0", GroupBy: "GROUP BY src.id", AdditionalReads: []string{"src.key (String)"}, TargetExtras: []string{"extra (String) DEFAULT 'x'"}}
 	next, _ = m.Update(columnsLoadedMsg{key: "db\x00first", revision: 5, request: m.columnsRequest, data: data})
 	m = next.(model)
 	if m.columnsLoading {
 		t.Fatal("loading not cleared")
 	}
 	content := strings.Join(m.detailLines(), "\n")
-	for _, part := range []string{"COLUMN FLOW", "OUTPUT  id", "SQL:   id", "src.id (UInt64)", "target: id (UInt64)", "src.key (String)", "extra (String) DEFAULT 'x'"} {
+	for _, part := range []string{"COLUMN FLOW", "QUERY CONDITIONS", "LEFT JOIN users ON src.id = users.id", "WHERE src.id > 0", "GROUP BY src.id", "OUTPUT  id", "SQL:   id", "src.id (UInt64)", "target: id (UInt64)", "src.key (String)", "extra (String) DEFAULT 'x'"} {
 		if !strings.Contains(content, part) {
 			t.Errorf("missing %q in %s", part, content)
 		}

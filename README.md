@@ -47,7 +47,9 @@ view without `TO` uses internal storage. Check the SQL definition with `d`.
 In the detailed view, press `c` (or click **columns**) to inspect column flows.
 For each SELECT output it shows the expression, referenced input columns,
 available MV and target types, and whether the target has a matching column
-name. Additional references from JOIN, WHERE, GROUP BY and similar clauses and
+name. The top-level JOIN, PREWHERE, WHERE, GROUP BY and HAVING clauses are
+shown explicitly, formatted by the parser; the original SQL remains available
+with `d`. Additional references from JOIN, WHERE, GROUP BY and similar clauses and
 target columns not identified in the SELECT are listed separately. The feature
 reads `system.columns` and parses the stored definition; it does not execute the
 view's SELECT. It needs permission to read the relevant column metadata.

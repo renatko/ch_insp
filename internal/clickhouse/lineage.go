@@ -13,6 +13,11 @@ import (
 // ColumnLineage is a best-effort static description of a view's SELECT.
 type ColumnLineage struct {
 	Columns         []ColumnMapping
+	Joins           []string
+	Prewhere        string
+	Where           string
+	GroupBy         string
+	Having          string
 	AdditionalReads []string
 	TargetExtras    []string
 	Warnings        []string
@@ -317,6 +322,19 @@ func displaySourceColumn(table lineageTable, col tableColumn, sources []lineageT
 
 func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColumn, warnings []string) ColumnLineage {
 	out := ColumnLineage{Warnings: append(append([]string(nil), plan.warnings...), warnings...)}
+	out.Joins = topLevelJoins(plan.query)
+	if plan.query.Prewhere != nil {
+		out.Prewhere = plan.query.Prewhere.String()
+	}
+	if plan.query.Where != nil {
+		out.Where = plan.query.Where.String()
+	}
+	if plan.query.GroupBy != nil {
+		out.GroupBy = plan.query.GroupBy.String()
+	}
+	if plan.query.Having != nil {
+		out.Having = plan.query.Having.String()
+	}
 	aliases := map[string]bool{}
 	for _, item := range plan.query.SelectItems {
 		if item.Alias != nil {
@@ -495,4 +513,44 @@ func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColu
 		out.TargetExtras = append(out.TargetExtras, entry)
 	}
 	return out
+}
+
+// topLevelJoins only describes the outer SELECT. Nested queries and UNION
+// branches remain subject to the warnings in parseLineage.
+func topLevelJoins(query *parser.SelectQuery) []string {
+	var joins []string
+	var visit func(parser.Expr, bool)
+	visit = func(expr parser.Expr, first bool) {
+		switch node := expr.(type) {
+		case *parser.JoinExpr:
+			if node == nil {
+				return
+			}
+			if !first && node.Left != nil {
+				kind := strings.Join(node.Modifiers, " ")
+				if kind == "" {
+					kind = "COMMA JOIN"
+				}
+				entry := kind + " " + node.Left.String()
+				if node.Constraints != nil {
+					entry += " " + node.Constraints.String()
+				}
+				joins = append(joins, entry)
+			}
+			if node.Right != nil {
+				visit(node.Right, false)
+			}
+		case *parser.JoinTableExpr:
+			if !first && node != nil {
+				joins = append(joins, "COMMA JOIN "+node.String())
+			}
+		}
+	}
+	if query.From != nil {
+		visit(query.From.Expr, true)
+	}
+	if query.ArrayJoin != nil {
+		joins = append(joins, strings.TrimSpace(query.ArrayJoin.String()))
+	}
+	return joins
 }
