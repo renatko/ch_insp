@@ -60,6 +60,18 @@ func TestMouseOverviewSelectionAndOpen(t *testing.T) {
 	}
 }
 
+func TestMouseSelectsLastViewInFirstGroup(t *testing.T) {
+	m := model{width: 120, height: 30, overview: true, metricsBusy: true, views: []clickhouse.View{
+		{Database: "db", Name: "first_a", Definition: "CREATE MATERIALIZED VIEW first_a TO group_a AS SELECT * FROM src"},
+		{Database: "db", Name: "first_b", Definition: "CREATE MATERIALIZED VIEW first_b TO group_b AS SELECT * FROM src"},
+		{Database: "db", Name: "last_a", Definition: "CREATE MATERIALIZED VIEW last_a TO group_a AS SELECT * FROM src"},
+	}}
+	next, _ := m.Update(mouseAtText(t, m, "last_a"))
+	if next.(model).selected != 2 || !next.(model).overview {
+		t.Fatalf("last view in first group was not selected: %#v", next)
+	}
+}
+
 func TestMouseWheelScrollsAreaAndHorizontal(t *testing.T) {
 	m := model{width: 100, height: 15, definition: true, views: []clickhouse.View{{Name: "mv", Definition: strings.Repeat(strings.Repeat("long line ", 12)+"\n", 30)}, {Name: "second"}}}
 	wheel := tea.MouseMsg{X: 80, Y: 6, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}

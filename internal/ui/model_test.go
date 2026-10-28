@@ -131,6 +131,34 @@ func TestOverviewOpenSelectedView(t *testing.T) {
 	}
 }
 
+func TestOverviewKeyboardFollowsGroupedVisualOrder(t *testing.T) {
+	m := model{database: "db", width: 120, height: 12, overview: true, views: []clickhouse.View{
+		{Database: "db", Name: "a_first", Definition: "CREATE MATERIALIZED VIEW a_first TO group_a AS SELECT * FROM source"},
+		{Database: "db", Name: "b_first", Definition: "CREATE MATERIALIZED VIEW b_first TO group_b AS SELECT * FROM source"},
+		{Database: "db", Name: "a_last", Definition: "CREATE MATERIALIZED VIEW a_last TO group_a AS SELECT * FROM source"},
+		{Database: "db", Name: "b_last", Definition: "CREATE MATERIALIZED VIEW b_last TO group_b AS SELECT * FROM source"},
+	}}
+	for _, expected := range []string{"a_last", "b_first", "b_last", "b_last"} {
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(model)
+		if m.views[m.selected].Name != expected {
+			t.Fatalf("down selected %s, expected %s", m.views[m.selected].Name, expected)
+		}
+		lines, positions := m.overviewLines()
+		start := minInt(m.overviewScroll, maxInt(0, len(lines)-maxInt(1, m.height-7)))
+		if positions[m.selected] < start || positions[m.selected]+1 >= start+maxInt(1, m.height-7) {
+			t.Fatalf("selected item is not visible: scroll=%d position=%d", start, positions[m.selected])
+		}
+	}
+	for _, expected := range []string{"b_first", "a_last", "a_first", "a_first"} {
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		m = next.(model)
+		if m.views[m.selected].Name != expected {
+			t.Fatalf("up selected %s, expected %s", m.views[m.selected].Name, expected)
+		}
+	}
+}
+
 func TestOverviewSharesTargetAndShowsTotalRate(t *testing.T) {
 	m := model{overviewReady: true, selected: 1, views: []clickhouse.View{
 		{Database: "db", Name: "first_mv", Definition: "CREATE MATERIALIZED VIEW first_mv TO destination AS SELECT * FROM first"},

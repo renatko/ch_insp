@@ -212,6 +212,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "o":
 			m.overview = !m.overview
 			m.overviewScroll, m.overviewColumn = 0, 0
+			if m.overview && len(m.views) > 0 {
+				m.keepOverviewSelectionVisible()
+			}
 			if m.overview && len(m.views) > 0 && !m.overviewBusy {
 				m.overviewBusy = true
 				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
@@ -242,24 +245,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.openFilter()
 			}
 		case "up", "k":
+			if m.overview {
+				m.moveOverviewSelection(-1)
+				break
+			}
 			if m.selected > 0 {
 				m.selected--
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
-				if m.overview {
-					m.keepOverviewSelectionVisible()
-				}
 			}
 		case "down", "j":
+			if m.overview {
+				m.moveOverviewSelection(1)
+				break
+			}
 			if m.selected < len(m.views)-1 {
 				m.selected++
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
-				if m.overview {
-					m.keepOverviewSelectionVisible()
-				}
 			}
 		case "d":
 			if m.overview {

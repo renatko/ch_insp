@@ -128,6 +128,31 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 	return lines, positions
 }
 
+// Navigation follows the rendered order, which may differ from catalog order
+// because views are grouped by target.
+func (m *model) moveOverviewSelection(delta int) {
+	if len(m.views) == 0 {
+		return
+	}
+	_, positions := m.overviewLines()
+	order := make([]int, len(positions))
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool { return positions[order[i]] < positions[order[j]] })
+	for position, index := range order {
+		if index != m.selected {
+			continue
+		}
+		next := minInt(maxInt(0, position+delta), len(order)-1)
+		if order[next] != m.selected {
+			m.selected, m.lineOffset, m.columnOffset, m.metricsReady = order[next], 0, 0, false
+			m.keepOverviewSelectionVisible()
+		}
+		return
+	}
+}
+
 var overviewPalette = []lipgloss.Color{"#60A5FA", "#FBBF24", "#A78BFA", "#34D399", "#FB7185", "#22D3EE", "#FB923C", "#E879F9"}
 
 func overviewGroupKey(view clickhouse.View, target string) string {
