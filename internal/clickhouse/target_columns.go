@@ -26,6 +26,10 @@ type TargetWriter struct {
 // LoadTargetColumns discovers all visible materialized views targeting the
 // selected view's table, including views outside the current UI filter/database.
 func LoadTargetColumns(ctx context.Context, dsn string, selected View, catalog []View) (TargetColumns, error) {
+	result, err := loadTargetColumns(ctx, dsn, selected, catalog)
+	return result, RedactConnectionError(err, dsn)
+}
+func loadTargetColumns(ctx context.Context, dsn string, selected View, catalog []View) (TargetColumns, error) {
 	plan, err := parseLineage(selected)
 	if err != nil {
 		return TargetColumns{}, fmt.Errorf("identify target of %s: %w", selected.Name, err)
@@ -39,6 +43,13 @@ func LoadTargetColumns(ctx context.Context, dsn string, selected View, catalog [
 // LoadTargetColumnsForTable inspects an explicitly selected table, even if
 // it is not the destination of the currently selected view.
 func LoadTargetColumnsForTable(ctx context.Context, dsn, database, table string, catalog []View) (TargetColumns, error) {
+	result, err := loadTargetColumnsForTable(ctx, dsn, database, table, catalog)
+	for i, warning := range result.Warnings {
+		result.Warnings[i] = RedactConnectionError(fmt.Errorf("%s", warning), dsn).Error()
+	}
+	return result, RedactConnectionError(err, dsn)
+}
+func loadTargetColumnsForTable(ctx context.Context, dsn, database, table string, catalog []View) (TargetColumns, error) {
 	target := lineageTable{Database: database, Name: table}
 	result := TargetColumns{Database: target.Database, Table: target.Name}
 	db, err := sql.Open("clickhouse", dsn)

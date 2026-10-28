@@ -17,6 +17,10 @@ type Node struct {
 }
 
 func LoadNodes(ctx context.Context, dsn string) ([]Node, error) {
+	nodes, err := loadNodes(ctx, dsn)
+	return nodes, RedactConnectionError(err, dsn)
+}
+func loadNodes(ctx context.Context, dsn string) ([]Node, error) {
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		return nil, err
@@ -69,6 +73,9 @@ func RedactConnectionError(err error, dsn string) error {
 			message = strings.ReplaceAll(message, password, "[redacted]")
 			message = strings.ReplaceAll(message, url.QueryEscape(password), "[redacted]")
 		}
+	}
+	if message == err.Error() {
+		return err
 	}
 	return fmt.Errorf("%s", message)
 }

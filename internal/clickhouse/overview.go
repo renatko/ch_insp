@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -31,10 +32,29 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 	}
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
-		return OverviewRates{Errors: []string{"open metrics connection: " + err.Error()}, StatusHours: validStatusHours(hours)}
+		return OverviewRates{Errors: []string{"open metrics connection: " + RedactConnectionError(err, dsn).Error()}, StatusHours: validStatusHours(hours)}
 	}
 	defer db.Close()
-	return collectOverviewRates(ctx, db, dsn, views, period, hours)
+	result := collectOverviewRates(ctx, db, dsn, views, period, hours)
+	redact := func(message string) string {
+		if message == "" {
+			return ""
+		}
+		return RedactConnectionError(fmt.Errorf("%s", message), dsn).Error()
+	}
+	for i, message := range result.Errors {
+		result.Errors[i] = redact(message)
+	}
+	result.StatusError = redact(result.StatusError)
+	for name, diagnostic := range result.TableDiagnostics {
+		diagnostic.Detail = redact(diagnostic.Detail)
+		result.TableDiagnostics[name] = diagnostic
+	}
+	for name, diagnostic := range result.ViewDiagnostics {
+		diagnostic.Detail = redact(diagnostic.Detail)
+		result.ViewDiagnostics[name] = diagnostic
+	}
+	return result
 }
 
 func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []View, period, hours int) OverviewRates {

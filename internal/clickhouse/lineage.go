@@ -87,6 +87,13 @@ func tableFromIdentifier(id *parser.TableIdentifier, fallback string) lineageTab
 // LoadColumnLineage reads metadata and may analyze the SELECT using EXPLAIN.
 // It never executes the view SELECT.
 func LoadColumnLineage(ctx context.Context, dsn string, view View) (ColumnLineage, error) {
+	result, err := loadColumnLineage(ctx, dsn, view)
+	for i, warning := range result.Warnings {
+		result.Warnings[i] = RedactConnectionError(fmt.Errorf("%s", warning), dsn).Error()
+	}
+	return result, RedactConnectionError(err, dsn)
+}
+func loadColumnLineage(ctx context.Context, dsn string, view View) (ColumnLineage, error) {
 	plan, err := parseLineage(view)
 	if err != nil {
 		return ColumnLineage{}, err

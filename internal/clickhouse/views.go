@@ -26,6 +26,10 @@ type Catalog struct {
 
 // LoadCatalog performs read-only discovery of databases and materialized views.
 func LoadCatalog(ctx context.Context, dsn string) (Catalog, error) {
+	catalog, err := loadCatalog(ctx, dsn)
+	return catalog, RedactConnectionError(err, dsn)
+}
+func loadCatalog(ctx context.Context, dsn string) (Catalog, error) {
 	var catalog Catalog
 	if strings.TrimSpace(dsn) == "" {
 		return catalog, fmt.Errorf("CLICKHOUSE_URL is not set")

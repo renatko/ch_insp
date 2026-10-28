@@ -59,6 +59,10 @@ func loadViewStatuses(ctx context.Context, db *sql.DB, names []string, dsn strin
 
 // LoadViewFailures returns recent logged failures and preserves the server error.
 func LoadViewFailures(ctx context.Context, dsn string, view View, hours int) ([]ViewFailure, error) {
+	failures, err := loadViewFailures(ctx, dsn, view, hours)
+	return failures, RedactConnectionError(err, dsn)
+}
+func loadViewFailures(ctx context.Context, dsn string, view View, hours int) ([]ViewFailure, error) {
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		return nil, err
