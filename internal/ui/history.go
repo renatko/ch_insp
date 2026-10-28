@@ -42,12 +42,12 @@ func mvRateText(ready, available bool, read, written float64, history *clickhous
 	}
 	if available {
 		if history == nil {
-			return fmt.Sprintf("read %.1f / write %.1f rows/s", read, written)
+			return fmt.Sprintf("read %.1f rows/s / write %.1f rows/s", read, written)
 		}
-		return fmt.Sprintf("read %.1f [%s] / write %.1f [%s] rows/s", read, historyBar(history.Read), written, historyBar(history.Written))
+		return fmt.Sprintf("read %.1f rows/s %s / write %.1f rows/s %s", read, historyBar(history.Read), written, historyBar(history.Written))
 	}
 	if history != nil {
-		text += fmt.Sprintf(" · read [%s] / write [%s]", historyBar(history.Read), historyBar(history.Written))
+		text += fmt.Sprintf(" · read %s / write %s", historyBar(history.Read), historyBar(history.Written))
 	}
 	return text
 }
@@ -61,7 +61,7 @@ func totalRateText(ready bool, value float64, available bool, history [5]uint64,
 		text = fmt.Sprintf("total: %.1f rows/s", value)
 	}
 	if hasHistory {
-		text += fmt.Sprintf(" [%s]", historyBar(history))
+		text += fmt.Sprintf(" %s", historyBar(history))
 	}
 	return text
 }
