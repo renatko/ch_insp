@@ -1,7 +1,9 @@
 package clickhouse
 
 import (
+	"crypto/sha256"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -14,7 +16,37 @@ type Flow struct {
 
 // InferFlow recognizes simple table references. Complex SQL remains visible in
 // the definition; the diagram is deliberately labelled as inferred.
+var flowCache = struct {
+	sync.Mutex
+	entries map[[32]byte]Flow
+}{entries: make(map[[32]byte]Flow)}
+
 func InferFlow(view View) Flow {
+	key := sha256.Sum256([]byte(view.Database + "\x00" + view.Definition))
+	flowCache.Lock()
+	cached, ok := flowCache.entries[key]
+	flowCache.Unlock()
+	if ok {
+		cached.Sources = append([]string(nil), cached.Sources...)
+		return cached
+	}
+	result := inferFlowUncached(view)
+	// The cached slice is owned by the cache; callers may append or edit theirs.
+	stored := result
+	stored.Sources = append([]string(nil), result.Sources...)
+	flowCache.Lock()
+	if len(flowCache.entries) >= 512 {
+		for old := range flowCache.entries {
+			delete(flowCache.entries, old)
+			break
+		}
+	}
+	flowCache.entries[key] = stored
+	flowCache.Unlock()
+	return result
+}
+
+func inferFlowUncached(view View) Flow {
 	tokens := sqlTokens(view.Definition)
 	flow := Flow{}
 	seen := map[string]bool{}

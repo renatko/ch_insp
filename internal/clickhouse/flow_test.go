@@ -41,3 +41,21 @@ func TestTriggerInferenceOnlyForSupportedDirectSource(t *testing.T) {
 		}
 	}
 }
+
+func TestFlowCacheDoesNotShareMutableSlices(t *testing.T) {
+	view := View{Database: "db", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
+	first := InferFlow(view)
+	if len(first.Sources) != 1 {
+		t.Fatal("source missing")
+	}
+	first.Sources[0] = "corrupted"
+	second := InferFlow(view)
+	if len(second.Sources) != 1 || second.Sources[0] != "db.source" {
+		t.Fatalf("cached flow mutated: %#v", second)
+	}
+	view.Definition = "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM other"
+	third := InferFlow(view)
+	if len(third.Sources) != 1 || third.Sources[0] != "db.other" {
+		t.Fatalf("definition change reused stale flow: %#v", third)
+	}
+}
