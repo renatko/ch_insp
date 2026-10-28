@@ -111,11 +111,11 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 				line += groupStyle.Render(" " + shortName(group.target))
 			}
 			lines = append(lines, line)
-			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth) + " ")
+			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth))
 			if j < len(rows)-1 {
-				stats += groupStyle.Render("  │  ")
+				stats += groupStyle.Render("   │  ")
 			} else {
-				stats += "     "
+				stats += "      "
 			}
 			if j == center {
 				stats += mutedStyle.Render(" " + total)

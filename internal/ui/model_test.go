@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -246,6 +247,22 @@ func TestOverviewHighlightsSourceAndMVOnly(t *testing.T) {
 		if !strings.Contains(lines[i], "48;2;51;65;85") {
 			t.Fatalf("line %d is not highlighted: %q", i, lines[i])
 		}
+	}
+	background := regexp.MustCompile("\x1b\\[[0-9;]*48;2;51;65;85m")
+	backgroundEnd := func(line string) int {
+		matches := background.FindAllStringIndex(line, -1)
+		if len(matches) == 0 {
+			t.Fatalf("missing background in %q", line)
+		}
+		end := matches[len(matches)-1][1]
+		reset := strings.Index(line[end:], "\x1b[0m")
+		if reset < 0 {
+			t.Fatalf("missing reset in %q", line)
+		}
+		return lipgloss.Width(line[:end+reset])
+	}
+	if first, second := backgroundEnd(lines[positions[1]]), backgroundEnd(lines[positions[1]+1]); first != second {
+		t.Fatalf("highlight ends in different columns: flow %d, stats %d", first, second)
 	}
 	nameLine := lines[positions[1]]
 	branch := strings.Index(nameLine, "──┴─▶")
