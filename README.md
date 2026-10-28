@@ -147,17 +147,24 @@ cover the connected server only, not the entire cluster or replicas.
 
 - `↑` / `↓` or `j` / `k`: select a view
 - `b`: choose a database; use `↑` / `↓` and `Enter` to switch, `Esc` to cancel
+- `/`: search visible sources, MVs and targets
 - `f`: edit source and target table filters
+- `e`: inspect recent MV errors
+- `g`: inspect inferred table dependencies
+- `t`: inspect the selected MV target table
+- `n`: select a discovered native TCP node
+- `p`: change chart interval; `s`: switch overview chart scale
 - `o`: switch between the overview and selected MV; `Enter` opens the selected MV
 - `r`: reload view metadata
 - `d`: switch between the diagram and SQL definition
 - `c`: switch between the diagram and column flow in the detailed view
 - `Page Up` / `Page Down`: scroll the current detail panel
-- `←` / `→` or `h` / `l`: scroll the diagram or SQL horizontally
+- `←` / `→` or `h` / `l`: select MV or target in overview; scroll detail horizontally
+- `H` / `L` or Shift + `←` / `→`: scroll overview horizontally
 - `q` or `Ctrl+C`: quit
 
 Mouse support depends on the terminal. Click an MV in the list to select it,
-or click a flow in the overview to select it and click it again to open it.
+or hover over a flow or target in the overview and click to open it.
 Click a database in the database selector to switch. The bracketed actions in
 the footer are clickable. The wheel scrolls the area under the pointer: it
 moves the selection over the MV list and scrolls the diagram or SQL elsewhere.
