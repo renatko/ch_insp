@@ -37,6 +37,7 @@ func (t lineageTable) key() string { return t.Database + "." + t.Name }
 
 type lineagePlan struct {
 	query    *parser.SelectQuery
+	scope    *lineageScope
 	sources  []lineageTable
 	target   *lineageTable
 	complex  bool
@@ -66,81 +67,12 @@ func parseLineage(view View) (plan lineagePlan, err error) {
 		t := tableFromIdentifier(mv.Destination.TableIdentifier, view.Database)
 		plan.target = &t
 	}
-	if plan.query.With != nil || plan.query.UnionAll != nil || plan.query.UnionDistinct != nil || plan.query.Except != nil || plan.query.ArrayJoin != nil {
-		plan.complex = true
-		plan.warnings = append(plan.warnings, "WITH, UNION, EXCEPT or ARRAY JOIN requires manual lineage inspection; references are not resolved to physical tables.")
-	}
-	for _, item := range plan.query.SelectItems {
-		hasSubquery := false
-		hasLambda := false
-		parser.Walk(item.Expr, func(n parser.Expr) bool {
-			switch expr := n.(type) {
-			case *parser.SubQuery, *parser.SelectQuery:
-				hasSubquery = true
-			case *parser.BinaryOperation:
-				if expr.Operation == parser.TokenKindArrow {
-					hasLambda = true
-				}
-			}
-			return true
-		})
-		if hasSubquery {
-			plan.complex = true
-			plan.warnings = append(plan.warnings, "A SELECT expression contains a subquery; source attribution requires manual inspection.")
-			break
-		}
-		if hasLambda {
-			plan.complex = true
-			plan.warnings = append(plan.warnings, "Lambda expressions require manual lineage inspection; parameter names are not resolved to physical columns.")
-			break
-		}
-	}
-	var collect func(parser.Expr)
-	collect = func(expr parser.Expr) {
-		switch node := expr.(type) {
-		case *parser.JoinExpr:
-			if node != nil {
-				collect(node.Left)
-				collect(node.Right)
-			}
-		case *parser.JoinTableExpr:
-			if node != nil {
-				collect(node.Table)
-			}
-		case *parser.TableExpr:
-			if node == nil {
-				return
-			}
-			var alias string
-			value := node.Expr
-			if a, ok := value.(*parser.AliasExpr); ok {
-				value = a.Expr
-				if id, ok := a.Alias.(*parser.Ident); ok {
-					alias = id.Name
-				}
-			}
-			if node.Alias != nil {
-				if id, ok := node.Alias.Alias.(*parser.Ident); ok {
-					alias = id.Name
-				}
-			}
-			if id, ok := value.(*parser.TableIdentifier); ok && id.Table != nil {
-				t := tableFromIdentifier(id, view.Database)
-				t.Alias = alias
-				plan.sources = append(plan.sources, t)
-			} else {
-				plan.complex = true
-				plan.warnings = append(plan.warnings, "A subquery, table function or unsupported FROM source requires manual lineage inspection.")
-			}
-		case nil:
-		default:
-			plan.complex = true
-			plan.warnings = append(plan.warnings, "Unsupported FROM structure; source attribution may be incomplete.")
-		}
-	}
-	if plan.query.From != nil {
-		collect(plan.query.From.Expr)
-	}
+	builder := scopeBuilder{database: view.Database, stack: map[*parser.SelectQuery]bool{}}
+	plan.scope = builder.build(plan.query, nil)
+	plan.sources = builder.physical
+	plan.complex = plan.scope.incomplete
+	plan.warnings = append(plan.warnings, builder.warnings...)
+
 	return plan, nil
 }
 
@@ -212,15 +144,51 @@ type sqlReference struct{ qualifier, name string }
 // type names and the components of qualified paths.
 func references(expr parser.Expr) []sqlReference {
 	ignored := map[*parser.Ident]bool{}
+	ignoredPaths := map[*parser.Path]bool{}
+	ignoredNested := map[*parser.NestedIdentifier]bool{}
 	var identifiers []*parser.Ident
 	var refs []sqlReference
 	parser.Walk(expr, func(n parser.Expr) bool {
 		switch v := n.(type) {
+		case *parser.SubQuery:
+			parser.Walk(v.Select, func(inner parser.Expr) bool {
+				switch id := inner.(type) {
+				case *parser.Ident:
+					ignored[id] = true
+				case *parser.Path:
+					ignoredPaths[id] = true
+				case *parser.NestedIdentifier:
+					ignoredNested[id] = true
+				}
+				return true
+			})
 		case *parser.FunctionExpr:
 			ignored[v.Name] = true
 		case *parser.ColumnExpr:
 			if v.Alias != nil {
 				ignored[v.Alias] = true
+			}
+			// The parser represents a lambda as a binary expression nested in
+			// one function argument. Its bound names are local to that argument.
+			bound := lambdaBindings(v.Expr)
+			if len(bound) > 0 {
+				parser.Walk(v.Expr, func(x parser.Expr) bool {
+					switch param := x.(type) {
+					case *parser.Ident:
+						if bound[param.Name] {
+							ignored[param] = true
+						}
+					case *parser.Path:
+						if len(param.Fields) > 0 && bound[param.Fields[0].Name] {
+							ignoredPaths[param] = true
+						}
+					case *parser.NestedIdentifier:
+						if param.Ident != nil && bound[param.Ident.Name] {
+							ignoredNested[param] = true
+						}
+					}
+					return true
+				})
 			}
 		case *parser.CastExpr:
 			parser.Walk(v.AsType, func(x parser.Expr) bool {
@@ -233,7 +201,7 @@ func references(expr parser.Expr) []sqlReference {
 			for _, id := range v.Fields {
 				ignored[id] = true
 			}
-			if len(v.Fields) > 0 {
+			if len(v.Fields) > 0 && !ignoredPaths[v] {
 				parts := make([]string, 0, len(v.Fields))
 				for _, id := range v.Fields {
 					parts = append(parts, id.Name)
@@ -244,9 +212,13 @@ func references(expr parser.Expr) []sqlReference {
 			ignored[v.Ident] = true
 			if v.DotIdent != nil {
 				ignored[v.DotIdent] = true
-				refs = append(refs, sqlReference{qualifier: v.Ident.Name, name: v.DotIdent.Name})
+				if !ignoredNested[v] {
+					refs = append(refs, sqlReference{qualifier: v.Ident.Name, name: v.DotIdent.Name})
+				}
 			} else {
-				refs = append(refs, sqlReference{name: v.Ident.Name})
+				if !ignoredNested[v] {
+					refs = append(refs, sqlReference{name: v.Ident.Name})
+				}
 			}
 		case *parser.Ident:
 			identifiers = append(identifiers, v)
@@ -261,50 +233,67 @@ func references(expr parser.Expr) []sqlReference {
 	return refs
 }
 
-func resolveReferences(refs []sqlReference, plan lineagePlan, metadata map[string][]tableColumn, aliases map[string]bool) []string {
-	seen := map[string]bool{}
-	var result []string
-	for _, ref := range refs {
-		if ref.name == "*" {
-			continue
-		}
-		label := ref.name
-		if ref.qualifier != "" {
-			label = ref.qualifier + "." + ref.name
-		}
-		var matches []string
-		metadataIncomplete := false
-		if !plan.complex && !(ref.qualifier == "" && aliases[ref.name]) {
-			for _, table := range plan.sources {
-				if ref.qualifier != "" && ref.qualifier != table.Alias && ref.qualifier != table.Name && ref.qualifier != table.key() {
-					continue
-				}
-				if _, ok := metadata[table.key()]; !ok {
-					metadataIncomplete = true
-				}
-				for _, col := range metadata[table.key()] {
-					if col.Name == ref.name {
-						matches = append(matches, displaySourceColumn(table, col, plan.sources))
-					}
-				}
+// Follow only binary operators here: descending into nested function calls
+// would extend the scope of a lambda to unrelated outer arguments.
+func lambdaBindings(expr parser.Expr) map[string]bool {
+	bound := map[string]bool{}
+	for _, op := range lambdaOperations(expr) {
+		parser.Walk(op.LeftExpr, func(param parser.Expr) bool {
+			if id, ok := param.(*parser.Ident); ok {
+				bound[id.Name] = true
 			}
-		}
-		var resolved string
-		if metadataIncomplete {
-			resolved = label + " (unresolved: source metadata incomplete)"
-		} else if len(matches) == 1 {
-			resolved = matches[0]
-		} else if len(matches) > 1 {
-			resolved = label + " (ambiguous: " + strings.Join(matches, ", ") + ")"
-		} else {
-			resolved = label + " (unresolved)"
-		}
-		if !seen[resolved] {
-			seen[resolved] = true
-			result = append(result, resolved)
-		}
+			return true
+		})
 	}
-	return result
+	return bound
+}
+
+func lambdaOperations(expr parser.Expr) []*parser.BinaryOperation {
+	var operations []*parser.BinaryOperation
+	var visit func(parser.Expr)
+	visit = func(node parser.Expr) {
+		op, ok := node.(*parser.BinaryOperation)
+		if !ok || op == nil {
+			return
+		}
+		if op.Operation == parser.TokenKindArrow {
+			operations = append(operations, op)
+			return
+		}
+		visit(op.LeftExpr)
+		visit(op.RightExpr)
+	}
+	visit(expr)
+	return operations
+}
+
+func hasUnscopedLambda(expr parser.Expr) bool {
+	covered := map[*parser.BinaryOperation]bool{}
+	ignored := map[*parser.BinaryOperation]bool{}
+	parser.Walk(expr, func(n parser.Expr) bool {
+		switch v := n.(type) {
+		case *parser.ColumnExpr:
+			for _, op := range lambdaOperations(v.Expr) {
+				covered[op] = true
+			}
+		case *parser.SubQuery:
+			parser.Walk(v.Select, func(inner parser.Expr) bool {
+				if op, ok := inner.(*parser.BinaryOperation); ok && op.Operation == parser.TokenKindArrow {
+					ignored[op] = true
+				}
+				return true
+			})
+		}
+		return true
+	})
+	unscoped := false
+	parser.Walk(expr, func(n parser.Expr) bool {
+		if op, ok := n.(*parser.BinaryOperation); ok && op.Operation == parser.TokenKindArrow && !covered[op] && !ignored[op] {
+			unscoped = true
+		}
+		return true
+	})
+	return unscoped
 }
 
 func displaySourceColumn(table lineageTable, col tableColumn, sources []lineageTable) string {
@@ -334,12 +323,6 @@ func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColu
 	}
 	if plan.query.Having != nil {
 		out.Having = plan.query.Having.String()
-	}
-	aliases := map[string]bool{}
-	for _, item := range plan.query.SelectItems {
-		if item.Alias != nil {
-			aliases[item.Alias.Name] = true
-		}
 	}
 	viewColumns := metadata[view.Database+"."+view.Name]
 	var targetColumns []tableColumn
@@ -389,11 +372,15 @@ func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColu
 		}
 		if expression == "*" || strings.HasSuffix(expression, ".*") {
 			var candidates []lineageTable
-			if !plan.complex && len(item.Modifiers) == 0 {
-				for _, table := range plan.sources {
+			if !plan.complex && len(item.Modifiers) == 0 && plan.scope != nil {
+				for _, relation := range plan.scope.relations {
 					qualifier := strings.TrimSuffix(expression, ".*")
-					if expression == "*" || qualifier == table.Alias || qualifier == table.Name || qualifier == table.key() {
-						candidates = append(candidates, table)
+					if expression == "*" || qualifier == relation.alias || (relation.table != nil && (qualifier == relation.table.Name || qualifier == relation.table.key())) {
+						if relation.table == nil {
+							candidates = nil
+							break
+						}
+						candidates = append(candidates, *relation.table)
 					}
 				}
 			}
@@ -442,63 +429,9 @@ func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColu
 				nameKnown = true
 			}
 		}
-		itemAliases := make(map[string]bool, len(aliases))
-		for k, v := range aliases {
-			itemAliases[k] = v
-		}
-		// A simple projection such as `id AS id` refers to the source column.
-		if id, ok := item.Expr.(*parser.Ident); ok && item.Alias != nil && id.Name == item.Alias.Name {
-			delete(itemAliases, id.Name)
-		}
-		add(output, expression, resolveReferences(references(item.Expr), plan, metadata, itemAliases), nameKnown)
+		add(output, expression, resolveExpression(item.Expr, plan.scope, metadata, map[string]bool{}), nameKnown)
 	}
-	var other []parser.Expr
-	if plan.query.Prewhere != nil {
-		other = append(other, plan.query.Prewhere)
-	}
-	if plan.query.Where != nil {
-		other = append(other, plan.query.Where)
-	}
-	if plan.query.GroupBy != nil {
-		other = append(other, plan.query.GroupBy)
-	}
-	if plan.query.Having != nil {
-		other = append(other, plan.query.Having)
-	}
-	if plan.query.OrderBy != nil {
-		other = append(other, plan.query.OrderBy)
-	}
-	if plan.query.Window != nil {
-		other = append(other, plan.query.Window)
-	}
-	if plan.query.LimitBy != nil {
-		other = append(other, plan.query.LimitBy)
-	}
-	if plan.query.ArrayJoin != nil {
-		other = append(other, plan.query.ArrayJoin)
-	}
-	if plan.query.From != nil {
-		parser.Walk(plan.query.From.Expr, func(n parser.Expr) bool {
-			switch clause := n.(type) {
-			case *parser.JoinConstraintClause:
-				other = append(other, clause)
-			case *parser.OnClause:
-				other = append(other, clause)
-			case *parser.UsingClause:
-				other = append(other, clause)
-			}
-			return true
-		})
-	}
-	seenReads := map[string]bool{}
-	for _, expr := range other {
-		for _, ref := range resolveReferences(references(expr), plan, metadata, aliases) {
-			if !seenReads[ref] {
-				seenReads[ref] = true
-				out.AdditionalReads = append(out.AdditionalReads, ref)
-			}
-		}
-	}
+	out.AdditionalReads = collectScopeReads(plan.scope, metadata)
 	sort.Strings(out.AdditionalReads)
 	for _, col := range targetColumns {
 		if seenOutput[col.Name] {

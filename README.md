@@ -54,12 +54,15 @@ target columns not identified in the SELECT are listed separately. The feature
 reads `system.columns` and parses the stored definition; it does not execute the
 view's SELECT. It needs permission to read the relevant column metadata.
 
-Column lineage is a best-effort static analysis, not an execution trace.
-Ambiguous or unresolved identifiers are marked explicitly. WITH/CTE, UNION,
-subqueries, lambda expressions, ARRAY JOIN, table functions, wildcard modifiers and other complex
-syntax can require manual inspection; wildcard expansion needs unambiguous
-source and MV metadata. A missing target match or type can also mean metadata
-is unavailable. Use `d` to inspect the original SQL.
+Column lineage is a best-effort static analysis, not an execution trace. It
+follows supported SELECT and WITH aliases, CTEs, FROM subqueries, scalar
+subqueries and lambda parameters back to source columns; intermediate
+transformations are shown as `via` expressions. Ambiguous or unresolved
+identifiers are marked explicitly. Correlated subqueries, UNION, ARRAY JOIN,
+table functions, wildcard modifiers and other complex syntax can require manual
+inspection; wildcard expansion needs unambiguous source and MV metadata. A
+missing target match or type can also mean metadata is unavailable. Use `d`
+to inspect the original SQL.
 
 The diagram refreshes rates approximately every 5 seconds. Rates are local-node
 averages over the preceding 60 seconds, derived from asynchronously flushed
