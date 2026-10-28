@@ -22,6 +22,18 @@ func (m model) dependencyItems() []dependencyItem {
 		if d.Direction == "writes" {
 			v := d.View
 			items = append(items, dependencyItem{label: "← MV " + name + " writes to table", view: &v})
+			flow := clickhouse.InferFlow(d.View)
+			for _, source := range flow.Sources {
+				role := "input; trigger unknown"
+				if flow.Trigger != "" {
+					if source == flow.Trigger {
+						role = "inferred trigger"
+					} else {
+						role = "other query input"
+					}
+				}
+				items = append(items, dependencyItem{label: "    ← table " + source + " (" + role + ")", table: source})
+			}
 		} else {
 			v := d.View
 			items = append(items, dependencyItem{label: "→ MV " + name + " reads (" + d.Role + ")", view: &v})

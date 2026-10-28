@@ -904,3 +904,35 @@ func TestErrorsReturnToPreviousScreen(t *testing.T) {
 		})
 	}
 }
+
+func TestDependenciesCanNavigateUpstream(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM db.src a JOIN db.lookup b ON a.id=b.id"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, overviewTargetFocus: true, views: views, allViews: views}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	if m.dependencyTable != "db.dst" {
+		t.Fatal("target graph did not open")
+	}
+	items := m.dependencyItems()
+	index := -1
+	for i, item := range items {
+		if item.table == "db.lookup" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatalf("upstream JOIN table missing: %#v", items)
+	}
+	m.dependencyCursor = index
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.dependencyTable != "db.lookup" {
+		t.Fatal("upstream table did not open")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m = next.(model)
+	if m.dependencyTable != "db.dst" {
+		t.Fatal("back did not restore target")
+	}
+}

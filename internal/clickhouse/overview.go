@@ -26,16 +26,20 @@ type OverviewRates struct {
 // LoadOverviewRates reads the same local-node, 60-second log window as LoadRates,
 // grouped for all objects in the selected database's flows.
 func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int, hours int) OverviewRates {
-	out := OverviewRates{Tables: map[string]float64{}, Views: map[string]ViewRate{}, StatusHours: validStatusHours(hours)}
 	if len(views) == 0 {
-		return out
+		return OverviewRates{Tables: map[string]float64{}, Views: map[string]ViewRate{}, StatusHours: validStatusHours(hours)}
 	}
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
-		out.Errors = append(out.Errors, "open metrics connection: "+err.Error())
-		return out
+		return OverviewRates{Errors: []string{"open metrics connection: " + err.Error()}, StatusHours: validStatusHours(hours)}
 	}
 	defer db.Close()
+	return collectOverviewRates(ctx, db, dsn, views, period, hours)
+}
+
+func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []View, period, hours int) OverviewRates {
+	out := OverviewRates{Tables: map[string]float64{}, Views: map[string]ViewRate{}, StatusHours: validStatusHours(hours)}
+	var err error
 	var tableNames, viewNames []string
 	seen := map[string]bool{}
 	for _, view := range views {
@@ -53,6 +57,14 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 	if err != nil {
 		out.Errors = append(out.Errors, "table metadata: "+err.Error())
 	}
+	// Metadata identifies eligible engines; log batches establish whether an
+	// event was observed. Unqueried batches must remain unknown.
+	for name, d := range out.TableDiagnostics {
+		if d.State == MetricNoEvents {
+			d.State = MetricUnknown
+			out.TableDiagnostics[name] = d
+		}
+	}
 	out.ViewDiagnostics = map[string]MetricDiagnostic{}
 	for _, name := range viewNames {
 		out.ViewDiagnostics[name] = MetricDiagnostic{State: MetricUnknown}
@@ -63,6 +75,13 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 			end = len(tableNames)
 		}
 		args, marks := queryArgs(tableNames[start:end])
+		for _, name := range tableNames[start:end] {
+			d := out.TableDiagnostics[name]
+			if d.State == MetricUnknown {
+				d.State = MetricNoEvents
+				out.TableDiagnostics[name] = d
+			}
+		}
 		rows, err := db.QueryContext(ctx, `SELECT database, table, sum(rows) FROM system.part_log
 			WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND
 			AND event_type = 'NewPart' AND error = 0 AND concat(database, '.', table) IN (`+marks+`)
