@@ -39,9 +39,11 @@ the selected MV's write rate; either can be unavailable independently. MV `read/
 executions in `system.query_views_log`; reads can include JOIN inputs. The
 internal target of a view without `TO` does not have a separate table rate.
 
-Press `o` to open an overview with a diagram for every MV in the selected
-database. Each diagram shows table rates, MV read/write rates, and the target's
-MV and total rates. Repeated table names indicate connections between diagrams.
+Press `o` to open a flow overview for every MV in the selected database. Views
+that write to the same target are grouped and connect to one target box. Inputs
+may be repeated for different views. Each input and MV shows its rates; the
+target shows its total rate and the selected MV's write rate when selection is
+in that group.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.

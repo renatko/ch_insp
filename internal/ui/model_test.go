@@ -109,7 +109,7 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 	if len(starts) != 2 || starts[1]-starts[0] != 12 {
 		t.Fatalf("unexpected view positions: %v", starts)
 	}
-	for _, value := range []string{"╭", "╰", "──┐", "──┴─▶"} {
+	for _, value := range []string{"╭", "╰", "▶", "│"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview diagram missing %q", value)
 		}
@@ -125,5 +125,56 @@ func TestOverviewOpenSelectedView(t *testing.T) {
 	next, _ = next.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if next.(model).overview || next.(model).selected != 1 {
 		t.Fatal("selected view did not open")
+	}
+}
+
+func TestOverviewSharesTargetAndSelectedMVRate(t *testing.T) {
+	m := model{overviewReady: true, selected: 1, views: []clickhouse.View{
+		{Database: "db", Name: "first_mv", Definition: "CREATE MATERIALIZED VIEW first_mv TO destination AS SELECT * FROM first"},
+		{Database: "db", Name: "second_mv", Definition: "CREATE MATERIALIZED VIEW second_mv TO destination AS SELECT * FROM second"},
+	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.destination": 9}, Views: map[string]clickhouse.ViewRate{"db.first_mv": {Written: 1}, "db.second_mv": {Written: 2}}}}
+	lines, starts := m.overviewLines()
+	joined := strings.Join(lines, "\n")
+	if strings.Count(joined, "│ destination") != 1 {
+		t.Fatalf("expected one target box:\n%s", joined)
+	}
+	for _, want := range []string{"first_mv", "second_mv", "▶", "MV: 2.0 rows/s · total: 9.0 rows/s"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %q in:\n%s", want, joined)
+		}
+	}
+	if starts[0] >= starts[1] {
+		t.Fatalf("unexpected selection positions: %v", starts)
+	}
+}
+
+func TestOverviewRepeatsSourceAcrossViewsAndTargets(t *testing.T) {
+	m := model{overviewReady: true, views: []clickhouse.View{
+		{Database: "db", Name: "one", Definition: "CREATE MATERIALIZED VIEW one TO first AS SELECT * FROM shared"},
+		{Database: "db", Name: "two", Definition: "CREATE MATERIALIZED VIEW two TO second AS SELECT * FROM shared"},
+	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.shared": 12}}}
+	lines, _ := m.overviewLines()
+	joined := strings.Join(lines, "\n")
+	if strings.Count(joined, "│ shared") != 2 {
+		t.Fatalf("source should appear once per view:\n%s", joined)
+	}
+	if strings.Count(joined, "▶") != 4 {
+		t.Fatalf("expected arrows into both views and targets:\n%s", joined)
+	}
+	for _, want := range []string{"one", "two", "first", "second", "parts: 12.0 rows/s", "▶"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestOverviewKeepsDistinctInternalTargets(t *testing.T) {
+	m := model{views: []clickhouse.View{
+		{Database: "db", Name: "a", Definition: "CREATE MATERIALIZED VIEW a ENGINE = MergeTree ORDER BY x AS SELECT * FROM src"},
+		{Database: "db", Name: "b", Definition: "CREATE MATERIALIZED VIEW b ENGINE = MergeTree ORDER BY x AS SELECT * FROM src"},
+	}}
+	lines, _ := m.overviewLines()
+	if strings.Count(strings.Join(lines, "\n"), "internal storage (no TO)") != 2 {
+		t.Fatal("internal targets must remain separate")
 	}
 }

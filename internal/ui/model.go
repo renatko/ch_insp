@@ -437,36 +437,24 @@ func (m model) renderList(width, height int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// overviewLines renders every view's flow with a stable selection position.
+// overviewLines renders a single graph for the selected database.
 func (m model) overviewLines() ([]string, []int) {
-	lines := []string{accentStyle.Render("FLOW OVERVIEW"), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Repeated table names connect diagrams."), ""}
-	starts := make([]int, len(m.views))
+	header := []string{accentStyle.Render("FLOW OVERVIEW"), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Views sharing a target are grouped; inputs may repeat."), ""}
 	if len(m.views) == 0 {
-		return append(lines, mutedStyle.Render("No materialized views in this database.")), starts
+		return append(header, mutedStyle.Render("No materialized views in this database.")), nil
 	}
-	for i, view := range m.views {
-		starts[i] = len(lines)
-		marker := "  "
-		if i == m.selected {
-			marker = accentStyle.Render("› ")
-		}
-		lines = append(lines, marker+accentStyle.Render(view.Name))
-		rates := clickhouse.Rates{Tables: m.overviewRates.Tables}
-		if rate, ok := m.overviewRates.Views[view.Database+"."+view.Name]; ok {
-			rates.MVAvailable, rates.MVRead, rates.MVWritten = true, rate.Read, rate.Written
-		}
-		for _, line := range diagramLines(view, rates, m.overviewReady) {
-			lines = append(lines, "  "+line)
-		}
-		lines = append(lines, "")
+	graph, positions := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected)
+	for i := range positions {
+		positions[i] += len(header)
 	}
-	lines = append(lines, mutedStyle.Render("JOIN inputs may not trigger incremental MVs."), mutedStyle.Render("No data may mean no events, delayed logs, or logging disabled."))
+	lines := append(header, graph...)
+	lines = append(lines, "", mutedStyle.Render("Tables can appear in more than one flow."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."), mutedStyle.Render("No data may mean no events, delayed logs, or logging disabled."))
 	if m.overviewReady {
 		for _, err := range m.overviewRates.Errors {
 			lines = append(lines, errorStyle.Render("Metrics: "+err))
 		}
 	}
-	return lines, starts
+	return lines, positions
 }
 
 func (m *model) keepOverviewSelectionVisible() {
@@ -530,6 +518,11 @@ func (m model) detailLines() []string {
 }
 
 func diagramLines(view clickhouse.View, rates clickhouse.Rates, ready bool) []string {
+	lines, _ := diagramFlowLines(view, rates, ready, true)
+	return lines
+}
+
+func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, includeTarget bool) ([]string, int) {
 	flow := clickhouse.InferFlow(view)
 	sources := flow.Sources
 	if len(sources) == 0 {
@@ -606,11 +599,14 @@ func diagramLines(view clickhouse.View, rates clickhouse.Rates, ready bool) []st
 			if row == middle {
 				connector = "────▶"
 			}
-			line += mv[row-top] + mutedStyle.Render(connector) + target[row-top]
+			line += mv[row-top]
+			if includeTarget {
+				line += mutedStyle.Render(connector) + target[row-top]
+			}
 		}
 		lines[row] = line
 	}
-	return lines
+	return lines, middle
 }
 
 func shortName(name string) string {
