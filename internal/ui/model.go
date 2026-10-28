@@ -80,8 +80,8 @@ type model struct {
 	dependencyTable                string
 	dependencyCursor               int
 	dependencyHistory              []string
-	dependencyReturnOverview       bool
 	dependencyReturnTarget         bool
+	dependencyReturnScreen         string
 	dependencyReturnTargetExplicit string
 	dependencyMessage              string
 	failuresMode                   bool

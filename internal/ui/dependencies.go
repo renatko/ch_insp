@@ -83,10 +83,22 @@ func (m *model) openDependencies() {
 	if table == "" || table == "unknown target" || table == "internal storage (no TO)" {
 		return
 	}
+	m.dependencyReturnScreen = "diagram"
+	switch {
+	case m.overview:
+		m.dependencyReturnScreen = "overview"
+	case m.target:
+		m.dependencyReturnScreen = "target"
+	case m.columns:
+		m.dependencyReturnScreen = "columns"
+	case m.definition:
+		m.dependencyReturnScreen = "definition"
+	case m.failuresMode:
+		m.dependencyReturnScreen = "errors"
+	}
 	m.cancelColumns()
 	m.dependencyReturnTarget = m.target
 	m.dependencyReturnTargetExplicit = m.targetExplicit
-	m.dependencyReturnOverview = m.overview
 	m.overview = false
 	m.target = false
 	m.columns = false
@@ -116,8 +128,19 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			m.lineOffset = 0
 			return m, m.loadTarget(), true
 		}
-		m.overview = m.dependencyReturnOverview
 		m.lineOffset = 0
+		switch m.dependencyReturnScreen {
+		case "overview":
+			m.overview = true
+		case "columns":
+			m.columns = true
+			return m, m.loadColumns(), true
+		case "definition":
+			m.definition = true
+		case "errors":
+			m.failuresMode = true
+			return m, m.loadFailures(), true
+		}
 		return m, nil, true
 	case "t":
 		if m.dependencyTable == "" {
@@ -162,10 +185,19 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		if item.view != nil {
 			// An explicit jump may leave the active filter or database. Clear
 			// filters so the requested visible-catalog view can be opened.
-			m.database = item.view.Database
-			m.filterSource = nil
-			m.filterTarget = nil
-			m.filterViews()
+			visible := false
+			for _, v := range m.views {
+				if v.Database == item.view.Database && v.Name == item.view.Name {
+					visible = true
+					break
+				}
+			}
+			if !visible {
+				m.database = item.view.Database
+				m.filterSource = nil
+				m.filterTarget = nil
+				m.filterViews()
+			}
 			for i, v := range m.views {
 				if v.Database == item.view.Database && v.Name == item.view.Name {
 					m.selected = i

@@ -51,3 +51,20 @@ func TestSearchAcceptsSpacesInQuotedNames(t *testing.T) {
 		t.Fatalf("search failed: %q %#v", m.searchQuery, m.searchResults())
 	}
 }
+
+func TestSearchJumpClearsPreviousDetailMode(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 80, height: 20, database: "db", views: views, allViews: views, columns: true}
+	if m.loadColumns() == nil {
+		t.Fatal("column request not started")
+	}
+	next, _ := m.Update(mouseKey("/"))
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("src")})
+	m = next.(model)
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.overview || m.columns || m.columnsLoading || m.columnsCancel != nil || cmd == nil {
+		t.Fatal("search retained old detail mode or did not load overview")
+	}
+}

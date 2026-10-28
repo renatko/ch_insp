@@ -936,3 +936,38 @@ func TestDependenciesCanNavigateUpstream(t *testing.T) {
 		t.Fatal("back did not restore target")
 	}
 }
+
+func TestDependenciesReturnAndPreserveVisibleFilter(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 120, height: 25, database: "db", views: views, allViews: views, columns: true, filterSource: []string{"db.src"}}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	if !m.dependencies {
+		t.Fatal("dependencies did not open")
+	}
+	next, cmd := m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.columns || !m.columnsLoading || cmd == nil {
+		t.Fatal("column screen not restored")
+	}
+	m.cancelColumns()
+	next, _ = m.Update(mouseKey("g"))
+	m = next.(model)
+	items := m.dependencyItems()
+	index := -1
+	for i, item := range items {
+		if item.view != nil && item.view.Name == "mv" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatal("view missing")
+	}
+	m.dependencyCursor = index
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if cmd == nil || len(m.filterSource) != 1 || m.filterSource[0] != "db.src" {
+		t.Fatal("opening an already visible view cleared its filter")
+	}
+}

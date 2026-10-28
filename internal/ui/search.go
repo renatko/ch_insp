@@ -69,6 +69,14 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		r := results[minInt(m.searchCursor, len(results)-1)]
+		// Search always lands in overview. Cancel any details request and
+		// discard its mode so Enter opens the selected result's diagram.
+		m.cancelColumns()
+		m.columns = false
+		m.target = false
+		m.failuresMode = false
+		m.dependencies = false
+		m.definition = false
 		m.searching = false
 		m.overview = true
 		m.overviewTargetFocus = r.kind == "target"
@@ -101,6 +109,10 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		}
+		if !m.overviewReady && !m.overviewBusy && len(m.views) > 0 {
+			m.overviewBusy = true
+			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch)
 		}
 		return m, nil
 	default:
