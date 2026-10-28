@@ -173,6 +173,7 @@ func (m model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	options := m.filterOptions(field)
 	switch msg.String() {
 	case "ctrl+c":
+		m.cancelColumns()
 		return m, tea.Quit
 	case "esc":
 		m.filtering = false
@@ -201,6 +202,7 @@ func (m model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) applyFilter(source, target []string) (tea.Model, tea.Cmd) {
+	m.cancelColumns()
 	m.filterSource, m.filterTarget = append([]string(nil), source...), append([]string(nil), target...)
 	m.filtering = false
 	m.selected, m.lineOffset, m.columnOffset, m.overviewScroll, m.overviewColumn = 0, 0, 0, 0, 0
@@ -215,7 +217,12 @@ func (m model) applyFilter(source, target []string) (tea.Model, tea.Cmd) {
 	}
 	if !m.overview && !m.metricsBusy {
 		m.metricsBusy = true
-		return m, loadMetrics(m.dsn, m.views[m.selected])
+		cmd := m.columnCmdIfActive()
+		return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected]), cmd)
+	}
+	if !m.overview {
+		cmd := m.columnCmdIfActive()
+		return m, cmd
 	}
 	return m, nil
 }

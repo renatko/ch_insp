@@ -93,3 +93,17 @@ func TestMouseWheelScrollsAreaAndHorizontal(t *testing.T) {
 		t.Fatal("list wheel did not change selection")
 	}
 }
+
+func TestMouseOpensColumnsAndLoadsOnSelection(t *testing.T) {
+	m := model{width: 120, height: 25, viewRevision: 1, views: []clickhouse.View{{Database: "db", Name: "first"}, {Database: "db", Name: "second"}}}
+	next, cmd := m.Update(mouseAtText(t, m, "[c]"))
+	m = next.(model)
+	if !m.columns || !m.columnsLoading || cmd == nil {
+		t.Fatal("columns button did not start loading")
+	}
+	next, cmd = m.Update(mouseAtText(t, m, "second"))
+	m = next.(model)
+	if m.selected != 1 || !m.columnsLoading || cmd == nil {
+		t.Fatal("mouse selection did not request columns for new view")
+	}
+}

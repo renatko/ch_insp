@@ -306,3 +306,57 @@ func TestOverviewHighlightsSourceAndMVOnly(t *testing.T) {
 		t.Fatal("unselected row is highlighted")
 	}
 }
+
+func TestColumnDetailsNavigationAndStaleResults(t *testing.T) {
+	m := model{width: 120, height: 30, viewRevision: 5, views: []clickhouse.View{{Database: "db", Name: "first", Definition: "CREATE MATERIALIZED VIEW first TO out AS SELECT id FROM src"}, {Database: "db", Name: "second", Definition: "CREATE MATERIALIZED VIEW second TO out AS SELECT n FROM src"}}}
+	next, cmd := m.Update(mouseKey("c"))
+	m = next.(model)
+	if !m.columns || !m.columnsLoading || cmd == nil {
+		t.Fatal("columns mode did not start loading")
+	}
+	data := clickhouse.ColumnLineage{Columns: []clickhouse.ColumnMapping{{Output: "id", Expression: "id", Inputs: []string{"src.id (UInt64)"}, ViewType: "UInt64", TargetType: "UInt64", TargetStatus: "matched by name"}}, AdditionalReads: []string{"src.key (String)"}, TargetExtras: []string{"extra (String) DEFAULT 'x'"}}
+	next, _ = m.Update(columnsLoadedMsg{key: "db\x00first", revision: 5, request: m.columnsRequest, data: data})
+	m = next.(model)
+	if m.columnsLoading {
+		t.Fatal("loading not cleared")
+	}
+	content := strings.Join(m.detailLines(), "\n")
+	for _, part := range []string{"COLUMN FLOW", "OUTPUT  id", "SQL:   id", "src.id (UInt64)", "target: id (UInt64)", "src.key (String)", "extra (String) DEFAULT 'x'"} {
+		if !strings.Contains(content, part) {
+			t.Errorf("missing %q in %s", part, content)
+		}
+	}
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	if m.selected != 1 || !m.columnsLoading || cmd == nil {
+		t.Fatal("new view metadata did not load")
+	}
+	next, _ = m.Update(columnsLoadedMsg{key: "db\x00first", revision: 5, request: m.columnsRequest - 1, data: data})
+	m = next.(model)
+	if !m.columnsLoading {
+		t.Fatal("stale result replaced current selection")
+	}
+	next, _ = m.Update(columnsLoadedMsg{key: "db\x00second", revision: 4, request: m.columnsRequest, data: data})
+	m = next.(model)
+	if !m.columnsLoading {
+		t.Fatal("old catalog revision accepted")
+	}
+	next, _ = m.Update(mouseKey("d"))
+	m = next.(model)
+	if m.columns || !m.definition {
+		t.Fatal("SQL view did not open")
+	}
+}
+
+func TestColumnDetailsIgnoreEarlierRequestForSameView(t *testing.T) {
+	m := model{columns: true, viewRevision: 2, views: []clickhouse.View{{Database: "db", Name: "mv"}}}
+	_ = m.loadColumns()
+	oldRequest := m.columnsRequest
+	_ = m.loadColumns()
+	next, _ := m.Update(columnsLoadedMsg{key: "db\x00mv", revision: 2, request: oldRequest})
+	m = next.(model)
+	if !m.columnsLoading {
+		t.Fatal("earlier request replaced a newer request")
+	}
+	m.cancelColumns()
+}

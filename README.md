@@ -44,6 +44,21 @@ query inputs, not necessarily insert triggers: for incremental materialized
 views a joined table does not trigger the view when it receives inserts. A
 view without `TO` uses internal storage. Check the SQL definition with `d`.
 
+In the detailed view, press `c` (or click **columns**) to inspect column flows.
+For each SELECT output it shows the expression, referenced input columns,
+available MV and target types, and whether the target has a matching column
+name. Additional references from JOIN, WHERE, GROUP BY and similar clauses and
+target columns not identified in the SELECT are listed separately. The feature
+reads `system.columns` and parses the stored definition; it does not execute the
+view's SELECT. It needs permission to read the relevant column metadata.
+
+Column lineage is a best-effort static analysis, not an execution trace.
+Ambiguous or unresolved identifiers are marked explicitly. WITH/CTE, UNION,
+subqueries, lambda expressions, ARRAY JOIN, table functions, wildcard modifiers and other complex
+syntax can require manual inspection; wildcard expansion needs unambiguous
+source and MV metadata. A missing target match or type can also mean metadata
+is unavailable. Use `d` to inspect the original SQL.
+
 The diagram refreshes rates approximately every 5 seconds. Rates are local-node
 averages over the preceding 60 seconds, derived from asynchronously flushed
 system logs, so they can lag and undercount (including when query logging is
@@ -96,6 +111,7 @@ cover the connected server only, not the entire cluster or replicas.
 - `o`: switch between the overview and selected MV; `Enter` opens the selected MV
 - `r`: reload view metadata
 - `d`: switch between the diagram and SQL definition
+- `c`: switch between the diagram and column flow in the detailed view
 - `Page Up` / `Page Down`: scroll the current detail panel
 - `←` / `→` or `h` / `l`: scroll the diagram or SQL horizontally
 - `q` or `Ctrl+C`: quit

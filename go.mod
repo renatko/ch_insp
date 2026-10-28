@@ -3,6 +3,7 @@ module chinspector
 go 1.20
 
 require (
+	github.com/AfterShip/clickhouse-sql-parser v0.4.17
 	github.com/ClickHouse/clickhouse-go/v2 v2.15.0
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/charmbracelet/lipgloss v1.1.0

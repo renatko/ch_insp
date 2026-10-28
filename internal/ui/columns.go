@@ -1,0 +1,76 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+)
+
+func (m model) columnLines() []string {
+	lines := []string{accentStyle.Render("COLUMN FLOW"), mutedStyle.Render("Static SQL analysis + system.columns · c: back to diagram"), ""}
+	if m.columnsLoading {
+		return append(lines, mutedStyle.Render("Loading column metadata…"))
+	}
+	if m.columnsError != nil {
+		return append(lines, errorStyle.Render("Cannot analyze view: "+m.columnsError.Error()), mutedStyle.Render("Press d to inspect the original SQL."))
+	}
+	for _, warning := range m.columnsData.Warnings {
+		lines = append(lines, errorStyle.Render("! "+warning))
+	}
+	if len(m.columnsData.Warnings) > 0 {
+		lines = append(lines, "")
+	}
+	for _, column := range m.columnsData.Columns {
+		output := column.Output
+		if column.ViewType != "" {
+			output += "  [MV: " + column.ViewType + "]"
+		} else {
+			output += "  [MV type not found]"
+		}
+		if column.TargetType != "" {
+			output += " → target: " + column.Output + " (" + column.TargetType + ")"
+		} else {
+			output += " → " + column.TargetStatus
+		}
+		lines = append(lines, accentStyle.Render("OUTPUT  "+output), "  SQL:   "+column.Expression)
+		if len(column.Inputs) == 0 {
+			lines = append(lines, mutedStyle.Render("  INPUT: no explicit column reference"))
+		} else {
+			for i, input := range column.Inputs {
+				label := "         "
+				if i == 0 {
+					label = "  INPUT: "
+				}
+				lines = append(lines, label+input)
+			}
+		}
+		lines = append(lines, "")
+	}
+	if len(m.columnsData.Columns) == 0 {
+		lines = append(lines, mutedStyle.Render("No SELECT outputs identified."), "")
+	}
+	if len(m.columnsData.AdditionalReads) > 0 {
+		lines = append(lines, accentStyle.Render("OTHER REFERENCES"), mutedStyle.Render("JOIN / WHERE / GROUP BY / ORDER BY and related clauses"))
+		for _, ref := range m.columnsData.AdditionalReads {
+			lines = append(lines, "  "+ref)
+		}
+		lines = append(lines, "")
+	}
+	if len(m.columnsData.TargetExtras) > 0 {
+		lines = append(lines, accentStyle.Render("OTHER TARGET COLUMNS"), mutedStyle.Render("Not identified among SELECT outputs; inspect defaults and SQL."))
+		for _, extra := range m.columnsData.TargetExtras {
+			lines = append(lines, "  "+extra)
+		}
+		lines = append(lines, "")
+	}
+	lines = append(lines, mutedStyle.Render("Unresolved and ambiguous references require checking the SQL."), mutedStyle.Render(fmt.Sprintf("%d SELECT outputs · d: original SQL", len(m.columnsData.Columns))))
+	return lines
+}
+
+// Keep multiline ClickHouse errors on separate lines in the detail viewport.
+func splitColumnLines(lines []string) []string {
+	var out []string
+	for _, line := range lines {
+		out = append(out, strings.Split(line, "\n")...)
+	}
+	return out
+}

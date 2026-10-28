@@ -74,7 +74,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			start := maxInt(0, m.selected-limit+1)
 			index := start + msg.Y - 4
 			if index >= start && index < minInt(len(m.views), start+limit) {
-				m.selectView(index)
+				if m.selectView(index) && m.columns {
+					cmd := m.loadColumns()
+					return m, cmd
+				}
 			}
 		}
 		return m, nil
@@ -123,7 +126,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.width >= 70 && msg.X < maxInt(26, m.width/3) {
 		if len(m.views) > 0 {
-			m.selectView(minInt(maxInt(0, m.selected+delta), len(m.views)-1))
+			if m.selectView(minInt(maxInt(0, m.selected+delta), len(m.views)-1)) && m.columns {
+				cmd := m.loadColumns()
+				return m, cmd
+			}
 		}
 		return m, nil
 	}
@@ -137,10 +143,12 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *model) selectView(index int) {
+func (m *model) selectView(index int) bool {
 	if m.selected != index {
 		m.selected, m.lineOffset, m.columnOffset, m.metricsReady = index, 0, 0, false
+		return true
 	}
+	return false
 }
 
 func mouseKey(key string) tea.KeyMsg {
@@ -167,7 +175,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

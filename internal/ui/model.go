@@ -28,6 +28,13 @@ type overviewLoadedMsg struct {
 	revision int
 	rates    clickhouse.OverviewRates
 }
+type columnsLoadedMsg struct {
+	key      string
+	revision int
+	request  uint64
+	data     clickhouse.ColumnLineage
+	err      error
+}
 
 type model struct {
 	dsn              string
@@ -51,6 +58,12 @@ type model struct {
 	width            int
 	height           int
 	definition       bool
+	columns          bool
+	columnsLoading   bool
+	columnsData      clickhouse.ColumnLineage
+	columnsError     error
+	columnsCancel    context.CancelFunc
+	columnsRequest   uint64
 	lineOffset       int
 	columnOffset     int
 	rates            clickhouse.Rates
@@ -116,6 +129,32 @@ func loadViews(dsn string) tea.Cmd {
 	}
 }
 
+func (m *model) loadColumns() tea.Cmd {
+	if len(m.views) == 0 {
+		return nil
+	}
+	m.cancelColumns()
+	view, revision, dsn := m.views[m.selected], m.viewRevision, m.dsn
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	m.columnsCancel = cancel
+	m.columnsRequest++
+	request := m.columnsRequest
+	m.columnsLoading, m.columnsError = true, nil
+	return func() tea.Msg {
+		defer cancel()
+		data, err := clickhouse.LoadColumnLineage(ctx, dsn, view)
+		return columnsLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, data: data, err: err}
+	}
+}
+
+func (m *model) cancelColumns() {
+	if m.columnsCancel != nil {
+		m.columnsCancel()
+		m.columnsCancel = nil
+	}
+	m.columnsLoading = false
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -141,6 +180,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.overviewBusy = true
 			return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 		}
+		if msg.err == nil && !m.overview && m.columns && len(m.views) > 0 {
+			cmd := m.loadColumns()
+			if !m.metricsBusy {
+				m.metricsBusy = true
+				return m, tea.Batch(cmd, loadMetrics(m.dsn, m.views[m.selected]))
+			}
+			return m, cmd
+		}
 		if msg.err == nil && !m.overview && len(m.views) > 0 && !m.metricsBusy {
 			m.metricsBusy = true
 			return m, loadMetrics(m.dsn, m.views[m.selected])
@@ -165,6 +212,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.database == m.database && msg.revision == m.viewRevision {
 			m.overviewRates, m.overviewReady = msg.rates, true
 		}
+	case columnsLoadedMsg:
+		if m.columns && !m.overview && len(m.views) > 0 && msg.request == m.columnsRequest && msg.revision == m.viewRevision && msg.key == m.views[m.selected].Database+"\x00"+m.views[m.selected].Name {
+			m.columnsLoading, m.columnsData, m.columnsError = false, msg.data, msg.err
+			m.columnsCancel = nil
+		}
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
@@ -174,6 +226,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.choosingDatabase {
 			switch msg.String() {
 			case "ctrl+c", "q":
+				m.cancelColumns()
 				return m, tea.Quit
 			case "esc", "b":
 				m.choosingDatabase = false
@@ -182,6 +235,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "j":
 				m.databaseCursor = minInt(maxInt(0, len(m.databases)-1), m.databaseCursor+1)
 			case "enter":
+				m.cancelColumns()
 				if len(m.databases) > 0 {
 					m.database = m.databases[m.databaseCursor]
 					m.selected, m.lineOffset, m.columnOffset = 0, 0, 0
@@ -197,20 +251,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if !m.overview && len(m.views) > 0 && !m.metricsBusy {
 					m.metricsBusy = true
-					return m, loadMetrics(m.dsn, m.views[m.selected])
+					cmd := m.columnCmdIfActive()
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected]), cmd)
+				}
+				if !m.overview {
+					cmd := m.columnCmdIfActive()
+					return m, cmd
 				}
 			}
 			return m, nil
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.cancelColumns()
 			return m, tea.Quit
 		case "r":
+			m.cancelColumns()
 			m.loading, m.err = true, nil
 			m.lineOffset, m.columnOffset = 0, 0
 			return m, loadViews(m.dsn)
 		case "o":
 			m.overview = !m.overview
+			if m.overview {
+				m.cancelColumns()
+			}
 			m.overviewScroll, m.overviewColumn = 0, 0
 			if m.overview && len(m.views) > 0 {
 				m.keepOverviewSelectionVisible()
@@ -219,6 +283,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.overviewBusy = true
 				return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision)
 			}
+			if !m.overview {
+				cmd := m.columnCmdIfActive()
+				return m, cmd
+			}
 		case "enter":
 			if m.overview && len(m.views) > 0 {
 				m.overview = false
@@ -226,8 +294,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.metricsReady = false
 				if !m.metricsBusy {
 					m.metricsBusy = true
-					return m, loadMetrics(m.dsn, m.views[m.selected])
+					cmd := m.columnCmdIfActive()
+					return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected]), cmd)
 				}
+				cmd := m.columnCmdIfActive()
+				return m, cmd
 			}
 		case "b":
 			if !m.loading && m.err == nil {
@@ -254,6 +325,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
+				if m.columns {
+					cmd := m.loadColumns()
+					return m, cmd
+				}
 			}
 		case "down", "j":
 			if m.overview {
@@ -265,14 +340,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.lineOffset = 0
 				m.columnOffset = 0
 				m.metricsReady = false
+				if m.columns {
+					cmd := m.loadColumns()
+					return m, cmd
+				}
 			}
 		case "d":
 			if m.overview {
 				break
 			}
 			m.definition = !m.definition
+			m.columns = false
+			m.cancelColumns()
 			m.lineOffset = 0
 			m.columnOffset = 0
+		case "c":
+			if m.overview {
+				break
+			}
+			m.columns = !m.columns
+			if !m.columns {
+				m.cancelColumns()
+			}
+			m.definition = false
+			m.lineOffset, m.columnOffset = 0, 0
+			if m.columns {
+				cmd := m.loadColumns()
+				return m, cmd
+			}
 		case "pgdown":
 			if m.overview {
 				lines, _ := m.overviewLines()
@@ -315,6 +410,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m *model) columnCmdIfActive() tea.Cmd {
+	if m.columns && len(m.views) > 0 {
+		return m.loadColumns()
+	}
+	return nil
 }
 
 func contains(items []string, value string) bool {
@@ -415,7 +517,7 @@ func (m model) View() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("[f] filter  [o] overview  [b] database  [d] SQL  [r] refresh  [q] quit", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate("[c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
 		return b.String()
 	}
 
@@ -433,7 +535,7 @@ func (m model) View() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[f] filter  [o] overview  [b] database  [d] SQL  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
 	return b.String()
 }
 
@@ -540,7 +642,9 @@ func (m model) renderDetail(width, height int) string {
 func (m model) detailLines() []string {
 	view := m.views[m.selected]
 	var lines []string
-	if m.definition {
+	if m.columns {
+		return splitColumnLines(m.columnLines())
+	} else if m.definition {
 		lines = append(lines, accentStyle.Render("CREATE DEFINITION"), "")
 		lines = append(lines, strings.Split(view.Definition, "\n")...)
 	} else {
