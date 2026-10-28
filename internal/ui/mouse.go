@@ -9,6 +9,12 @@ import (
 )
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonNone {
+		if m.overview && !m.loading && m.err == nil && !m.filtering && !m.choosingDatabase {
+			m.hoverOverview(msg.X, msg.Y)
+		}
+		return m, nil
+	}
 	if msg.Action != tea.MouseActionPress {
 		return m, nil
 	}
@@ -229,4 +235,54 @@ func (m model) clickedAction(x, y int) string {
 		}
 	}
 	return ""
+}
+
+// Hover only changes focus within actual diagram rows; it never scrolls or
+// opens anything, so moving across an empty area cannot change selection.
+func (m *model) hoverOverview(x, y int) {
+	if len(m.views) == 0 {
+		return
+	}
+	lines, positions := m.overviewLines()
+	visible := maxInt(1, m.height-7)
+	if y < 2 || y >= 2+visible {
+		return
+	}
+	start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
+	line := start + y - 2
+	if line < 0 || line >= len(lines) {
+		return
+	}
+	column := x + m.overviewColumn
+	for _, target := range m.overviewTargets() {
+		if (line == target.line || line == target.line+1) && column >= target.column && column < target.column+target.width {
+			m.selected = target.index
+			m.overviewTargetFocus = true
+			return
+		}
+	}
+	for i, pos := range positions {
+		if line != pos && line != pos+1 {
+			continue
+		}
+		flow := ansi.Strip(lines[pos])
+		arrow := strings.Index(flow, " ─▶ ")
+		if arrow < 0 {
+			continue
+		}
+		after := arrow + len(" ─▶ ")
+		name := strings.Index(flow[after:], m.views[i].Name)
+		if name < 0 {
+			continue
+		}
+		end := lipgloss.Width(flow[:after+name+len(m.views[i].Name)])
+		if column >= 0 && column < end {
+			if m.selected != i {
+				m.metricsReady = false
+			}
+			m.selected = i
+			m.overviewTargetFocus = false
+		}
+		return
+	}
 }

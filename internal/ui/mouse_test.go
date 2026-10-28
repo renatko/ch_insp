@@ -134,3 +134,49 @@ func TestOverviewTargetMouseSelectionAndOpen(t *testing.T) {
 		t.Fatal("second target click did not open target")
 	}
 }
+
+func TestOverviewMouseHoverSelectsFlowAndTargetWithoutOpening(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "first_mv", Definition: "CREATE MATERIALIZED VIEW first_mv TO dst AS SELECT * FROM src"}, {Database: "db", Name: "second_mv", Definition: "CREATE MATERIALIZED VIEW second_mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 150, height: 30, database: "db", overview: true, views: views, allViews: views}
+	move := mouseAtText(t, m, "second_mv")
+	move.Action = tea.MouseActionMotion
+	move.Button = tea.MouseButtonNone
+	next, cmd := m.Update(move)
+	m = next.(model)
+	if m.selected != 1 || m.overviewTargetFocus || !m.overview || cmd != nil {
+		t.Fatal("hover did not select flow")
+	}
+	move = mouseAtText(t, m, "dst")
+	move.Action = tea.MouseActionMotion
+	move.Button = tea.MouseButtonNone
+	next, cmd = m.Update(move)
+	m = next.(model)
+	if !m.overviewTargetFocus || !m.overview || cmd != nil {
+		t.Fatal("hover did not select target")
+	}
+	next, cmd = m.Update(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonNone, Action: tea.MouseActionMotion})
+	m = next.(model)
+	if !m.overviewTargetFocus || cmd != nil {
+		t.Fatal("empty area changed selection")
+	}
+	next, cmd = m.Update(mouseAtText(t, m, "dst"))
+	m = next.(model)
+	if !m.target || !m.targetLoading || cmd == nil {
+		t.Fatal("click after hover did not open target")
+	}
+}
+
+func TestOverviewMouseHoverWithScrollOffsets(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "first_long_mv", Definition: "CREATE MATERIALIZED VIEW first_long_mv TO first_destination AS SELECT * FROM source"}, {Database: "db", Name: "second_long_mv", Definition: "CREATE MATERIALIZED VIEW second_long_mv TO second_destination AS SELECT * FROM source"}}
+	m := model{width: 35, height: 10, database: "db", overview: true, views: views, allViews: views, selected: 1, overviewTargetFocus: true}
+	m.keepOverviewTargetVisible()
+	pos := mouseAtText(t, m, "second_destination")
+	pos.Action = tea.MouseActionMotion
+	pos.Button = tea.MouseButtonNone
+	m.overviewTargetFocus = false
+	next, _ := m.Update(pos)
+	m = next.(model)
+	if !m.overviewTargetFocus || m.selected != 1 {
+		t.Fatal("hover missed target in scrolled viewport")
+	}
+}

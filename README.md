@@ -115,7 +115,7 @@ the terminal and font determine whether these styles are visible. Each target
 group has its own color, including its inputs and
 views. Colors remain stable when filtering; with more than eight groups the
 palette repeats, and refreshing after schema changes can reassign colors.
-Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `→` to select its target, then `Enter` to open the target table; `↑` / `↓` move between target groups and `←` returns focus to the MV. You can also click a target to select it and click again to open it. The selected item is highlighted. Use `H` / `L`, Shift+arrow or Shift+mouse wheel for horizontal scrolling; page scrolling is also supported. Metrics are queried in
+Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `→` to select its target, then `Enter` to open the target table; `↑` / `↓` move between target groups and `←` returns focus to the MV. Moving the mouse over a flow or target selects it; click the selected item to open it. The selected item is highlighted. Use `H` / `L`, Shift+arrow or Shift+mouse wheel for horizontal scrolling; page scrolling is also supported. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
 Press `f` to filter views by source and/or target tables. The lists are built

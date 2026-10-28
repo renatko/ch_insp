@@ -100,7 +100,7 @@ var (
 
 // Run starts the interactive materialized view browser.
 func Run(dsn string) error {
-	_, err := tea.NewProgram(model{dsn: dsn, loading: true}, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	_, err := tea.NewProgram(model{dsn: dsn, loading: true}, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	return err
 }
 
