@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -372,12 +373,21 @@ func TestTargetScreenNavigationAndStaleResult(t *testing.T) {
 	next, _ = m.Update(targetLoadedMsg{key: "db\x00first", revision: 3, request: m.columnsRequest, data: data})
 	m = next.(model)
 	content := strings.Join(m.detailLines(), "\n")
-	for _, v := range []string{"TARGET TABLE", "out", "id (UInt64)", "first", "other.second", "events.id (UInt64)", "DEFAULT 'x'", "No identified MV output", "direct inserts"} {
+	for _, v := range []string{"TARGET TABLE", "out", "id (UInt64)", "first", "other.second", "events.id (UInt64)", "no MV", "direct inserts"} {
 		if !strings.Contains(content, v) {
 			t.Errorf("missing %q: %s", v, content)
 		}
 	}
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	if m.selected != 0 || m.targetColumn != 1 || cmd != nil {
+		t.Fatal("column selection did not move")
+	}
+	content = strings.Join(m.detailLines(), "\n")
+	if !strings.Contains(content, "DEFAULT 'x'") || !strings.Contains(content, "No identified MV output") {
+		t.Fatalf("missing selected column details: %s", content)
+	}
+	next, cmd = m.Update(mouseAtText(t, m, "second"))
 	m = next.(model)
 	if m.selected != 1 || !m.targetLoading || cmd == nil {
 		t.Fatal("new target was not loaded")
@@ -391,5 +401,25 @@ func TestTargetScreenNavigationAndStaleResult(t *testing.T) {
 	m = next.(model)
 	if m.target || !m.overview {
 		t.Fatal("did not return to overview")
+	}
+}
+
+func TestTargetColumnWindowAndNarrowWriterCount(t *testing.T) {
+	cols := make([]clickhouse.TargetColumn, 20)
+	for i := range cols {
+		cols[i] = clickhouse.TargetColumn{Name: fmt.Sprintf("col_%02d", i), Type: "UInt64", Writers: []clickhouse.TargetWriter{{View: "db.extremely_long_materialized_view_one"}, {View: "db.extremely_long_materialized_view_two"}}}
+	}
+	m := model{width: 60, height: 22, database: "db", target: true, views: []clickhouse.View{{Name: "mv"}}, targetData: clickhouse.TargetColumns{Table: "target", Columns: cols}}
+	for i := 0; i < 19; i++ {
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(model)
+	}
+	start, end := m.targetColumnWindow()
+	if m.targetColumn != 19 || start == 0 || end != 20 {
+		t.Fatalf("selection/window: %d %d:%d", m.targetColumn, start, end)
+	}
+	content := strings.Join(m.targetLines(), "\n")
+	if !strings.Contains(content, "col_19") || !strings.Contains(content, "← 2 MV") || strings.Contains(content, "col_00") {
+		t.Fatalf("unexpected compact list: %s", content)
 	}
 }

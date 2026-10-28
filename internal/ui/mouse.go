@@ -69,6 +69,23 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.target && !m.targetLoading && m.targetError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+			contentTop := 3
+			height := maxInt(5, m.height-8)
+			if m.width < 70 {
+				contentTop = 4
+				height = maxInt(5, m.height-9)
+			}
+			lines := m.detailLines()
+			offset := minInt(m.lineOffset, maxInt(0, len(lines)-maxInt(1, height-2)))
+			start, end := m.targetColumnWindow()
+			index := start + msg.Y - contentTop + offset - 4
+			if msg.Y >= contentTop && msg.Y < contentTop+height-2 && index >= start && index < end {
+				m.targetColumn = index
+				m.lineOffset = 0
+				return m, nil
+			}
+		}
 		if m.width >= 70 && msg.X >= 0 && msg.X < maxInt(26, m.width/3) && msg.Y >= 4 {
 			limit := maxInt(1, maxInt(5, m.height-8)-2)
 			start := maxInt(0, m.selected-limit+1)

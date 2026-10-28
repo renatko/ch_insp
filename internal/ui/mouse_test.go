@@ -107,3 +107,15 @@ func TestMouseOpensColumnsAndLoadsOnSelection(t *testing.T) {
 		t.Fatal("mouse selection did not request columns for new view")
 	}
 }
+
+func TestMouseSelectsTargetColumn(t *testing.T) {
+	for _, width := range []int{120, 60} {
+		m := model{width: width, height: 30, database: "db", target: true, views: []clickhouse.View{{Name: "mv"}}, targetData: clickhouse.TargetColumns{Table: "out", Columns: []clickhouse.TargetColumn{{Name: "first_col", Type: "UInt64"}, {Name: "second_col", Type: "String"}}}}
+		pos := mouseAtText(t, m, "second_col")
+		next, _ := m.Update(pos)
+		got := next.(model)
+		if got.targetColumn != 1 {
+			t.Errorf("width %d: target column %d", width, got.targetColumn)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"chinspector/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type targetLoadedMsg struct {
@@ -33,11 +34,29 @@ func (m *model) loadTarget() tea.Cmd {
 	m.columnsRequest++
 	request := m.columnsRequest
 	m.targetLoading, m.targetError = true, nil
+	m.targetColumn = 0
 	return func() tea.Msg {
 		defer cancel()
 		data, err := clickhouse.LoadTargetColumns(ctx, dsn, view, catalog)
 		return targetLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, data: data, err: err}
 	}
+}
+
+// targetColumnWindow keeps the selected row and its details visible on small screens.
+func (m model) targetColumnWindow() (int, int) {
+	count := len(m.targetData.Columns)
+	visible := maxInt(1, (m.height-16)/2)
+	if m.height <= 0 {
+		visible = 6
+	}
+	if visible > count {
+		visible = count
+	}
+	start := maxInt(0, m.targetColumn-visible+1)
+	if start+visible > count {
+		start = maxInt(0, count-visible)
+	}
+	return start, start + visible
 }
 
 func (m model) targetLines() []string {
@@ -49,16 +68,57 @@ func (m model) targetLines() []string {
 		return append(lines, errorStyle.Render("Cannot inspect target: "+m.targetError.Error()))
 	}
 	data := m.targetData
-	lines = append(lines, targetStyle.Render(shortName(data.Database+"."+data.Table)), mutedStyle.Render(fmt.Sprintf("%d columns · %d visible materialized views", len(data.Columns), len(data.Views))), "")
-	for _, c := range data.Columns {
-		heading := c.Name + " (" + c.Type + ")"
-		if c.DefaultKind != "" {
-			heading += "  " + c.DefaultKind + " " + c.DefaultExpression
+	lines = append(lines, targetStyle.Render(shortName(data.Database+"."+data.Table))+mutedStyle.Render(fmt.Sprintf("  ·  %d columns · %d visible MVs", len(data.Columns), len(data.Views))))
+	start, end := m.targetColumnWindow()
+	for i := start; i < end; i++ {
+		c := data.Columns[i]
+		names := []string{}
+		seen := map[string]bool{}
+		for _, w := range c.Writers {
+			if seen[w.View] {
+				continue
+			}
+			seen[w.View] = true
+			name := w.View
+			if strings.HasPrefix(name, m.database+".") {
+				name = strings.TrimPrefix(name, m.database+".")
+			}
+			names = append(names, name)
 		}
-		lines = append(lines, targetStyle.Render(heading))
+		prefix := "  "
+		if i == m.targetColumn {
+			prefix = "› "
+		}
+		row := prefix + c.Name + "  " + c.Type
+		suffix := "  · no MV"
+		if c.DefaultKind != "" {
+			suffix += " · " + c.DefaultKind
+		}
+		if len(names) > 0 {
+			suffix = "  ← " + strings.Join(names, ", ")
+		}
+		if lipgloss.Width(row+suffix) > m.detailWidth() && len(names) > 0 {
+			suffix = fmt.Sprintf("  ← %d MV", len(names))
+		}
+		row += suffix
+		if i == m.targetColumn {
+			lines = append(lines, activeStyle.Render(row))
+		} else {
+			lines = append(lines, row)
+		}
+	}
+	if start > 0 || end < len(data.Columns) {
+		lines = append(lines, mutedStyle.Render(fmt.Sprintf("  columns %d–%d of %d", start+1, end, len(data.Columns))))
+	}
+	lines = append(lines, "")
+	if len(data.Columns) > 0 && m.targetColumn >= 0 && m.targetColumn < len(data.Columns) {
+		c := data.Columns[m.targetColumn]
+		lines = append(lines, accentStyle.Render(c.Name+"  "+c.Type))
+		if c.DefaultKind != "" {
+			lines = append(lines, mutedStyle.Render("  "+c.DefaultKind+" "+c.DefaultExpression))
+		}
 		if len(c.Writers) == 0 {
-			lines = append(lines, mutedStyle.Render("  No identified MV output"), "")
-			continue
+			lines = append(lines, mutedStyle.Render("  No identified MV output"))
 		}
 		for _, w := range c.Writers {
 			name := w.View
@@ -70,11 +130,10 @@ func (m model) targetLines() []string {
 				lines = append(lines, "    "+styleColumnPath(input))
 			}
 		}
-		lines = append(lines, "")
 	}
 	for _, warning := range data.Warnings {
 		lines = append(lines, errorStyle.Render("! "+warning))
 	}
-	lines = append(lines, mutedStyle.Render("Based on visible MV definitions; direct inserts and hidden views are not included."))
+	lines = append(lines, "", mutedStyle.Render("↑/↓: select column · PgUp/PgDn: scroll details"), mutedStyle.Render("Visible MV definitions only; direct inserts and hidden views are not included."))
 	return lines
 }

@@ -61,6 +61,7 @@ type model struct {
 	columns              bool
 	target               bool
 	targetReturnOverview bool
+	targetColumn         int
 	targetLoading        bool
 	targetData           clickhouse.TargetColumns
 	targetError          error
@@ -331,6 +332,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.openFilter()
 			}
 		case "up", "k":
+			if m.target {
+				if m.targetLoading || m.targetError != nil {
+					break
+				}
+				m.targetColumn = maxInt(0, m.targetColumn-1)
+				m.lineOffset = 0
+				break
+			}
 			if m.overview {
 				m.moveOverviewSelection(-1)
 				break
@@ -346,6 +355,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "down", "j":
+			if m.target {
+				if m.targetLoading || m.targetError != nil {
+					break
+				}
+				m.targetColumn = minInt(maxInt(0, len(m.targetData.Columns)-1), m.targetColumn+1)
+				m.lineOffset = 0
+				break
+			}
 			if m.overview {
 				m.moveOverviewSelection(1)
 				break
