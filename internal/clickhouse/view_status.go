@@ -28,9 +28,7 @@ func loadViewStatuses(ctx context.Context, db *sql.DB, names []string) (map[stri
 			end = len(names)
 		}
 		args, marks := queryArgs(names[start:end])
-		rows, err := db.QueryContext(ctx, `SELECT view_name, maxIf(event_time, status = 'QueryFinish'), countIf(status = 'QueryFinish'), countIf(status IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing'))
-  FROM system.query_views_log WHERE event_date >= today() - 1 AND event_time >= now() - INTERVAL 24 HOUR AND event_time <= now()
-  AND view_type = 'Materialized' AND view_name IN (`+marks+`) GROUP BY view_name`, args...)
+		rows, err := db.QueryContext(ctx, viewStatusQuery(marks), args...)
 		if err != nil {
 			return result, err
 		}
@@ -80,4 +78,10 @@ func LoadViewFailures(ctx context.Context, dsn string, view View) ([]ViewFailure
 		return nil, fmt.Errorf("read MV errors: %w", err)
 	}
 	return failures, nil
+}
+
+func viewStatusQuery(marks string) string {
+	return `SELECT view_name, maxIf(event_time, status = 'QueryFinish'), countIf(status = 'QueryFinish'), countIf(status IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing'))
+ FROM system.query_views_log WHERE event_date >= today() - 1 AND event_time >= now() - INTERVAL 24 HOUR AND event_time <= now()
+ AND view_type = 'Materialized' AND view_name IN (` + marks + `) GROUP BY view_name`
 }

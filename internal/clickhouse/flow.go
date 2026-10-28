@@ -68,9 +68,8 @@ func InferFlow(view View) Flow {
 	return flow
 }
 
-// Only claim a trigger for a direct physical left-most FROM input in a
-// supported incremental query. Derived inputs and refreshable views are not
-// inferred here.
+// Follow the left-most input through supported CTEs and FROM subqueries.
+// Refreshable and unsupported queries retain an unknown trigger.
 func inferTrigger(view View) string {
 	tokens := sqlTokens(view.Definition)
 	for _, token := range tokens {
@@ -82,14 +81,18 @@ func inferTrigger(view View) string {
 		}
 	}
 	plan, err := parseLineage(view)
-	if err != nil || plan.scope == nil || plan.scope.incomplete || len(plan.scope.relations) == 0 {
+	if err != nil {
 		return ""
 	}
-	first := plan.scope.relations[0]
-	if first.table == nil {
-		return ""
+	scope := plan.scope
+	for scope != nil && !scope.incomplete && len(scope.relations) > 0 {
+		first := scope.relations[0]
+		if first.table != nil {
+			return first.table.key()
+		}
+		scope = first.derived
 	}
-	return first.table.key()
+	return ""
 }
 
 func tableName(tokens []string, i int, database string) (string, int) {
