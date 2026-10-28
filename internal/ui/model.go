@@ -68,7 +68,7 @@ var (
 
 // Run starts the interactive materialized view browser.
 func Run(dsn string) error {
-	_, err := tea.NewProgram(model{dsn: dsn, loading: true}, tea.WithAltScreen()).Run()
+	_, err := tea.NewProgram(model{dsn: dsn, loading: true}, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	return err
 }
 
@@ -155,6 +155,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.database == m.database {
 			m.overviewRates, m.overviewReady = msg.rates, true
 		}
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
 		if m.choosingDatabase {
 			switch msg.String() {
@@ -348,7 +350,7 @@ func (m model) View() string {
 		b.WriteString("\n")
 		b.WriteString(m.err.Error())
 		b.WriteString("\n\n")
-		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL, then press r to retry. Press q to quit."))
+		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
 		return b.String()
 	}
 	if m.choosingDatabase {
@@ -372,7 +374,7 @@ func (m model) View() string {
 			}
 			b.WriteString("\n")
 		}
-		b.WriteString("\n" + mutedStyle.Render("↑/↓ select  Enter switch  Esc cancel  q quit"))
+		b.WriteString("\n" + mutedStyle.Render("↑/↓ select  [enter] switch  [esc] cancel  [q] quit"))
 		return b.String()
 	}
 	if m.overview {
@@ -387,7 +389,7 @@ func (m model) View() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("o overview  b databases  ↑/↓ select  ←/→ scroll  d SQL  r  q", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate("[o] overview  [b] database  [d] SQL  [r] refresh  [q] quit", width, "…")))
 		return b.String()
 	}
 
@@ -405,7 +407,7 @@ func (m model) View() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render("o overview  b databases  ↑/↓ select  ←/→ scroll  PgUp/PgDn scroll  d SQL  r refresh  q quit"))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[o] overview  [b] database  [d] SQL  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
 	return b.String()
 }
 
@@ -479,7 +481,7 @@ func (m model) renderOverview(width int) string {
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
-	footer := "o back  Enter open MV  ↑/↓ select  ←/→ scroll  PgUp/PgDn  b database  r refresh  q quit"
+	footer := "[o] back  [enter] open MV  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
 }
 

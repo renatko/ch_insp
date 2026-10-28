@@ -64,3 +64,12 @@ cover the connected server only, not the entire cluster or replicas.
 - `Page Up` / `Page Down`: scroll the current detail panel
 - `←` / `→` or `h` / `l`: scroll the diagram or SQL horizontally
 - `q` or `Ctrl+C`: quit
+
+Mouse support depends on the terminal. Click an MV in the list to select it,
+or click a flow in the overview to select it and click it again to open it.
+Click a database in the database selector to switch. The bracketed actions in
+the footer are clickable. The wheel scrolls the area under the pointer: it
+moves the selection over the MV list and scrolls the diagram or SQL elsewhere.
+Use horizontal wheel scrolling, or Shift + wheel when supported, to scroll
+horizontally. Hold Shift while selecting text if your terminal supports that
+override for mouse capture.
