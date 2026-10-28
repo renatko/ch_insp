@@ -51,6 +51,10 @@ type model struct {
 	nodes                    []clickhouse.Node
 	nodeCursor               int
 	nodeRequest              uint64
+	nodeCancel               context.CancelFunc
+	nodeSurvey               *clickhouse.ClusterSurvey
+	nodeDetails              bool
+	nodeDetailsOffset        int
 	allViews                 []clickhouse.View
 	choosingDatabase         bool
 	databaseCursor           int
@@ -237,13 +241,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case nodesLoadedMsg:
 		if m.choosingNode && msg.request == m.nodeRequest {
 			m.nodeLoading = false
+			m.nodeCancel = nil
 			m.nodes = msg.nodes
 			m.nodeError = msg.err
 			m.nodeCursor = 0
 		}
+	case nodeSurveyLoadedMsg:
+		if m.choosingNode && msg.request == m.nodeRequest {
+			m.nodeLoading = false
+			m.nodeCancel = nil
+			m.nodeSurvey = &msg.survey
+			m.nodeError = nil
+		}
 	case nodeConnectedMsg:
 		if m.choosingNode && msg.request == m.nodeRequest {
 			m.nodeLoading = false
+			m.nodeCancel = nil
 			if msg.err != nil {
 				m.nodeError = msg.err
 				return m, nil
@@ -324,16 +337,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.choosingNode {
 			switch msg.String() {
 			case "esc":
+				if m.nodeDetails {
+					m.nodeDetails = false
+					m.nodeDetailsOffset = 0
+					return m, nil
+				}
+				if m.nodeCancel != nil {
+					m.nodeCancel()
+					m.nodeCancel = nil
+				}
 				m.choosingNode = false
 				m.nodeRequest++
 			case "q", "ctrl+c":
+				if m.nodeCancel != nil {
+					m.nodeCancel()
+				}
 				return m, tea.Quit
 			case "up", "k":
+				if m.nodeDetails {
+					m.nodeDetailsOffset = maxInt(0, m.nodeDetailsOffset-1)
+					break
+				}
 				m.nodeCursor = maxInt(0, m.nodeCursor-1)
 			case "down", "j":
+				if m.nodeDetails {
+					m.nodeDetailsOffset = minInt(m.nodeDetailMaxOffset(), m.nodeDetailsOffset+1)
+					break
+				}
 				m.nodeCursor = minInt(maxInt(0, len(m.nodes)-1), m.nodeCursor+1)
-			case "enter":
+			case "v":
 				if !m.nodeLoading && len(m.nodes) > 0 {
+					return m, m.surveySelectedCluster()
+				}
+			case "e":
+				if !m.nodeLoading && m.selectedNodeSurvey() != nil {
+					m.nodeDetails = true
+					m.nodeDetailsOffset = 0
+				}
+			case "pgup":
+				m.nodeDetailsOffset = maxInt(0, m.nodeDetailsOffset-maxInt(1, m.height-8))
+			case "pgdown":
+				m.nodeDetailsOffset = minInt(m.nodeDetailMaxOffset(), m.nodeDetailsOffset+maxInt(1, m.height-8))
+			case "enter":
+				if !m.nodeDetails && !m.nodeLoading && len(m.nodes) > 0 {
 					return m, m.connectNode(m.nodes[m.nodeCursor])
 				}
 			}

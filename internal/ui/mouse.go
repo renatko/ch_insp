@@ -26,7 +26,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.choosingNode {
-			visible := maxInt(1, m.height-11)
+			if m.nodeDetails {
+				return m, nil
+			}
+			visible := maxInt(1, m.height-13)
 			start := maxInt(0, m.nodeCursor-visible+1)
 			firstRow := 6
 			if m.nodeError != nil {
@@ -204,6 +207,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if msg.Button == tea.MouseButtonWheelDown {
 			delta = 3
 		}
+		if m.nodeDetails {
+			m.nodeDetailsOffset = minInt(m.nodeDetailMaxOffset(), maxInt(0, m.nodeDetailsOffset+delta))
+			return m, nil
+		}
 		m.nodeCursor = minInt(maxInt(0, m.nodeCursor+delta), maxInt(0, len(m.nodes)-1))
 		return m, nil
 	}
@@ -308,7 +315,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"n", "p", "s", "g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"v", "n", "p", "s", "g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

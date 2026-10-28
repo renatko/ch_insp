@@ -770,3 +770,30 @@ func TestChartWindowLabelUsesObservedServerWindow(t *testing.T) {
 		t.Fatalf("unexpected window: %s", label)
 	}
 }
+
+func TestClusterSurveySelectionAndFailureDetail(t *testing.T) {
+	node := clickhouse.Node{Cluster: "cluster", Host: "node", Port: 9000}
+	m := model{width: 120, height: 25, choosingNode: true, nodes: []clickhouse.Node{node}, nodeName: "current"}
+	next, cmd := m.Update(mouseKey("v"))
+	m = next.(model)
+	if !m.nodeLoading || cmd == nil {
+		t.Fatal("survey did not start")
+	}
+	survey := clickhouse.ClusterSurvey{Cluster: "cluster", Total: 2, Nodes: []clickhouse.NodeSurvey{{Node: node, Error: "connection denied"}}}
+	next, _ = m.Update(nodeSurveyLoadedMsg{request: m.nodeRequest, survey: survey})
+	m = next.(model)
+	if !strings.Contains(m.renderNodes(120), "0/2 nodes responded") {
+		t.Fatal("survey coverage missing")
+	}
+	next, _ = m.Update(mouseKey("e"))
+	m = next.(model)
+	details := m.renderNodes(120)
+	if !m.nodeDetails || !strings.Contains(details, "connection denied") || !strings.Contains(details, "part_log: not checked") {
+		t.Fatalf("incorrect details: %s", details)
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.choosingNode || m.nodeDetails {
+		t.Fatal("details did not close")
+	}
+}
