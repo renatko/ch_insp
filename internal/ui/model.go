@@ -665,7 +665,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 × 60s, oldest → newest"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes, oldest → newest"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
@@ -740,7 +740,7 @@ func (m model) detailLines() []string {
 	} else {
 		lines = append(lines, accentStyle.Render("DATA FLOW"), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
 		lines = append(lines, diagramLines(view, m.rates, m.metricsReady)...)
-		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: 5 × 60s."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: 5 completed minutes."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
 		if m.metricsReady {
 			for _, err := range m.rates.Errors {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))

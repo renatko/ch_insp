@@ -17,8 +17,8 @@ func TestHistoryQueriesWithClickHouseLocal(t *testing.T) {
 	partQuery := strings.ReplaceAll(tableHistoryQuery("'db.dst'"), "system.part_log", "part_events")
 	setup := `CREATE TABLE view_events (view_name String, event_date Date, event_time DateTime, view_type String, status String, read_rows UInt64, written_rows UInt64) ENGINE=Memory;
  CREATE TABLE part_events (database String, table String, event_date Date, event_time DateTime, event_type String, error UInt16, rows UInt64) ENGINE=Memory;
- INSERT INTO view_events SELECT 'db.mv', today(), now()-toIntervalSecond(n), 'Materialized', 'QueryFinish', 1, 2 FROM (SELECT arrayJoin([300,299,240,180,120,60,0]) AS n);
- INSERT INTO part_events SELECT 'db', 'dst', today(), now()-toIntervalSecond(n), 'NewPart', 0, 3 FROM (SELECT arrayJoin([300,299,240,180,120,60,0]) AS n); `
+ INSERT INTO view_events SELECT 'db.mv', today(), toStartOfMinute(now())-toIntervalSecond(n), 'Materialized', 'QueryFinish', 1, 2 FROM (SELECT arrayJoin([300,299,240,180,120,60,0]) AS n);
+ INSERT INTO part_events SELECT 'db', 'dst', today(), toStartOfMinute(now())-toIntervalSecond(n), 'NewPart', 0, 3 FROM (SELECT arrayJoin([300,299,240,180,120,60,0]) AS n); `
 	out, err := exec.Command(binary, "local", "--multiquery", "--query", setup+viewQuery+"; "+partQuery).CombinedOutput()
 	if err != nil {
 		t.Fatalf("clickhouse local: %v: %s", err, out)

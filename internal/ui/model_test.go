@@ -443,14 +443,14 @@ func TestChartsShowFiveIntervals(t *testing.T) {
 	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
 	rates := clickhouse.Rates{MVAvailable: true, MVRead: 1, MVWritten: 2, MVHistory: &hist, Tables: map[string]float64{"db.dst": 3}, TableHistory: map[string][5]uint64{"db.dst": tables}}
 	detail := strings.Join(diagramLines(view, rates, true), "\n")
-	for _, part := range []string{"read 1.0 rows/s ·▂▄·█", "write 2.0 rows/s ██·██", "total: 3.0 rows/s ▂▄▅▇█"} {
+	for _, part := range []string{"read ·▂▄·█ 1.0 rows/s", "write ██·██ 2.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
 		if !strings.Contains(detail, part) {
 			t.Errorf("missing %q: %s", part, detail)
 		}
 	}
 	overview := clickhouse.OverviewRates{Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 1, Written: 2}}, History: map[string]clickhouse.ViewHistory{"db.mv": hist}, Tables: rates.Tables, TableHistory: rates.TableHistory}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
-	for _, part := range []string{"read 1.0 rows/s ·▂▄·█", "total: 3.0 rows/s ▂▄▅▇█"} {
+	for _, part := range []string{"read ·▂▄·█ 1.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
 		if !strings.Contains(strings.Join(lines, "\n"), part) {
 			t.Errorf("overview missing %q", part)
 		}

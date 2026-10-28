@@ -99,8 +99,8 @@ executions in `system.query_views_log`; reads can include JOIN inputs. The
 internal target of a view without `TO` does not have a separate table rate.
 
 Next to MV read/write and target total, a five-bar chart shows observed rows in
-five non-overlapping 60-second intervals, oldest on the left. Each chart is
-scaled independently. A dot means no rows were observed in that
+the five most recent completed calendar minutes, oldest on the left. The current
+partial minute is excluded. Each chart is scaled independently. A dot means no rows were observed in that
 interval, which can also happen when logging is missing or delayed. The charts
 use the same local-node successful MV events and successful `NewPart` events as
 the rates; they do not include other cluster nodes, failed view executions or

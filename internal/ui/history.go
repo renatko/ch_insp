@@ -43,13 +43,13 @@ func mvRateText(ready, available bool, read, written float64, history *clickhous
 		if history == nil {
 			return mutedStyle.Render("read/write: no data")
 		}
-		return readMetricStyle.Render("read: no data "+historyBar(history.Read)) + " / " + writeMetricStyle.Render("write: no data "+historyBar(history.Written))
+		return readMetricStyle.Render("read "+historyBar(history.Read)+" no data") + " / " + writeMetricStyle.Render("write "+historyBar(history.Written)+" no data")
 	}
 	readText := fmt.Sprintf("read %.1f rows/s", read)
 	writeText := fmt.Sprintf("write %.1f rows/s", written)
 	if history != nil {
-		readText += " " + historyBar(history.Read)
-		writeText += " " + historyBar(history.Written)
+		readText = fmt.Sprintf("read %s %.1f rows/s", historyBar(history.Read), read)
+		writeText = fmt.Sprintf("write %s %.1f rows/s", historyBar(history.Written), written)
 	}
 	return readMetricStyle.Render(readText) + " / " + writeMetricStyle.Render(writeText)
 }
@@ -63,7 +63,11 @@ func totalRateText(ready bool, value float64, available bool, history [5]uint64,
 		text = fmt.Sprintf("total: %.1f rows/s", value)
 	}
 	if hasHistory {
-		text += " " + historyBar(history)
+		if available {
+			text = fmt.Sprintf("total: %s %.1f rows/s", historyBar(history), value)
+		} else {
+			text = "total: " + historyBar(history) + " no data"
+		}
 	}
 	return writeMetricStyle.Render(text)
 }

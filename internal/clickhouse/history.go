@@ -8,7 +8,8 @@ import (
 )
 
 // ViewHistory contains observed row counts in five consecutive 60-second
-// windows, ordered oldest to newest. Empty buckets mean no logged events.
+// completed calendar-minute windows, ordered oldest to newest. Empty buckets mean
+// no logged events.
 type ViewHistory struct{ Read, Written [5]uint64 }
 
 func loadViewHistories(ctx context.Context, db *sql.DB, names []string) (map[string]ViewHistory, error) {
@@ -87,20 +88,20 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string) (map[st
 func viewHistoryQuery(marks string) string {
 	fields := []string{"view_name"}
 	for i := 5; i >= 1; i-- {
-		condition := fmt.Sprintf("event_time > now() - INTERVAL %d SECOND AND event_time <= now() - INTERVAL %d SECOND", i*60, (i-1)*60)
+		condition := fmt.Sprintf("event_time >= toStartOfMinute(now()) - INTERVAL %d SECOND AND event_time < toStartOfMinute(now()) - INTERVAL %d SECOND", i*60, (i-1)*60)
 		fields = append(fields, "sumIf(read_rows, "+condition+")", "sumIf(written_rows, "+condition+")")
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.query_views_log
- WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 300 SECOND AND event_time <= now()
+ WHERE event_date >= today() - 1 AND event_time >= toStartOfMinute(now()) - INTERVAL 300 SECOND AND event_time < toStartOfMinute(now())
  AND view_type = 'Materialized' AND status = 'QueryFinish' AND view_name IN (` + marks + `) GROUP BY view_name`
 }
 
 func tableHistoryQuery(marks string) string {
 	fields := []string{"concat(database, '.', table)"}
 	for i := 5; i >= 1; i-- {
-		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time > now() - INTERVAL %d SECOND AND event_time <= now() - INTERVAL %d SECOND)", i*60, (i-1)*60))
+		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time >= toStartOfMinute(now()) - INTERVAL %d SECOND AND event_time < toStartOfMinute(now()) - INTERVAL %d SECOND)", i*60, (i-1)*60))
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.part_log
- WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 300 SECOND AND event_time <= now()
+ WHERE event_date >= today() - 1 AND event_time >= toStartOfMinute(now()) - INTERVAL 300 SECOND AND event_time < toStartOfMinute(now())
  AND event_type = 'NewPart' AND error = 0 AND concat(database, '.', table) IN (` + marks + `) GROUP BY database, table`
 }
