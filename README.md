@@ -58,7 +58,10 @@ from all discovered views in the current database. Use Tab to switch lists,
 arrows or the mouse wheel to navigate, and Space or a click to toggle tables.
 Multiple choices within one list match any selected table; when both lists have
 choices, a view must match both. Enter applies the selection; Ctrl+X clears both,
-and Esc cancels. `(any table)` clears the current list. Identical table names from
+and Esc cancels. `(any table)` selects all entries in the current list; select
+it again to clear that list. An empty selection applies no restriction for that
+list. Selecting all entries matches only those inferred table names, so views
+without a recognized table in that list may be excluded. Identical table names from
 different databases include their database in the list. The filter applies to
 the list and overview and remains active when switching databases. Filtering
 uses the SQL-inferred relationships described above; complex SQL or internal

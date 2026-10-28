@@ -124,8 +124,41 @@ func TestFilterListsDisambiguateAndKeepMissingSelection(t *testing.T) {
 		}
 	}
 	m.selectFilterOption(0, 0)
+	m.selectFilterOption(0, 0)
 	if len(m.draftSource) != 0 || m.filterCursors[0] != 0 {
 		t.Fatal("could not clear missing selection")
+	}
+}
+
+func TestAnyTableSelectsAndClearsAllOptions(t *testing.T) {
+	m := filterFixture()
+	m.openFilter()
+	options := m.filterOptions(0)
+	m.selectFilterOption(0, 0)
+	if len(m.draftSource) != len(options)-1 || !allFilterOptionsSelected(options, m.draftSource) {
+		t.Fatalf("expected every source selected: %v", m.draftSource)
+	}
+	if !strings.Contains(m.renderFilter(m.width), "[x] (any table)") {
+		t.Fatal("select all checkbox is not checked")
+	}
+	if !strings.Contains(m.renderFilter(m.width), "[x] events") || !strings.Contains(m.renderFilter(m.width), "[x] users") {
+		t.Fatal("individual table checkboxes are not checked")
+	}
+	m.selectFilterOption(0, 1)
+	if allFilterOptionsSelected(m.filterOptions(0), m.draftSource) {
+		t.Fatal("select all should be unchecked after deselecting an entry")
+	}
+	m.selectFilterOption(0, 0)
+	if !allFilterOptionsSelected(m.filterOptions(0), m.draftSource) {
+		t.Fatal("select all did not restore the missing entry")
+	}
+	m.selectFilterOption(0, 0)
+	if len(m.draftSource) != 0 {
+		t.Fatal("second click should clear the list")
+	}
+	m.selectFilterOption(1, 0)
+	if len(m.draftTarget) != 2 || len(m.draftSource) != 0 {
+		t.Fatal("target select all must not change sources")
 	}
 }
 

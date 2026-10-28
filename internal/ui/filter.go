@@ -120,7 +120,13 @@ func (m *model) selectFilterOption(field, index int) {
 	}
 	selected := options[index].value
 	var next []string
-	if selected != "" {
+	if selected == "" {
+		if !allFilterOptionsSelected(options, current) {
+			for _, option := range options[1:] {
+				next = append(next, option.value)
+			}
+		}
+	} else {
 		for _, name := range current {
 			if name != selected {
 				next = append(next, name)
@@ -143,6 +149,18 @@ func (m *model) selectFilterOption(field, index int) {
 			break
 		}
 	}
+}
+
+func allFilterOptionsSelected(options []filterOption, selected []string) bool {
+	if len(options) <= 1 {
+		return false
+	}
+	for _, option := range options[1:] {
+		if !contains(selected, option.value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m model) filterVisible() int { return maxInt(1, m.height-11) }
@@ -225,7 +243,7 @@ func (m model) renderFilter(width int) string {
 			prefix = "› "
 		}
 		check := "[ ] "
-		if (options[i].value == "" && len(current) == 0) || contains(current, options[i].value) {
+		if (options[i].value == "" && allFilterOptionsSelected(options, current)) || (options[i].value != "" && contains(current, options[i].value)) {
 			check = "[x] "
 		}
 		line := ansi.Truncate(prefix+check+options[i].label, maxInt(1, width), "…")
