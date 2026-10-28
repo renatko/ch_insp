@@ -582,3 +582,43 @@ func TestOverviewTargetSelectionHasEvenWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestHotkeysStayOnLastTerminalLine(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	for _, tc := range []struct {
+		name                          string
+		width, height                 int
+		overview, filtering, choosing bool
+	}{
+		{"overview short", 120, 35, true, false, false},
+		{"overview long", 120, 12, true, false, false},
+		{"detail wide", 120, 30, false, false, false},
+		{"detail narrow", 60, 30, false, false, false},
+		{"filter", 120, 30, false, true, false},
+		{"database chooser", 120, 30, false, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := model{width: tc.width, height: tc.height, database: "db", databases: []string{"db"}, views: views, allViews: views, overview: tc.overview, filtering: tc.filtering, choosingDatabase: tc.choosing}
+			lines := strings.Split(m.View(), "\n")
+			if len(lines) != tc.height || !strings.Contains(ansi.Strip(lines[len(lines)-1]), "[") {
+				t.Fatalf("footer not at bottom: got %d lines, footer %q", len(lines), lines[len(lines)-1])
+			}
+		})
+	}
+}
+
+func TestOverviewNotesAndFooterRemainPinned(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	for _, height := range []int{12, 25, 50} {
+		m := model{width: 120, height: height, database: "db", overview: true, views: views, allViews: views}
+		lines := strings.Split(m.View(), "\n")
+		if len(lines) != height {
+			t.Fatalf("height %d got %d lines", height, len(lines))
+		}
+		for i, want := range []string{"Tables can appear", "JOIN inputs", "No data may mean", "[enter]"} {
+			if !strings.Contains(ansi.Strip(lines[height-4+i]), want) {
+				t.Errorf("height %d: expected %q at line %d, got %q", height, want, height-4+i, lines[height-4+i])
+			}
+		}
+	}
+}

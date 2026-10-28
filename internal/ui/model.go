@@ -541,6 +541,25 @@ func (m model) detailWidth() int {
 }
 
 func (m model) View() string {
+	content := m.renderView()
+	if m.loading || m.height <= 0 {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	if len(lines) >= m.height {
+		return content
+	}
+	// All non-loading screens end with their keyboard shortcuts. Keep the
+	// content at its original position and fill the space above that footer.
+	footer := lines[len(lines)-1]
+	lines = lines[:len(lines)-1]
+	for len(lines) < m.height-1 {
+		lines = append(lines, "")
+	}
+	return strings.Join(append(lines, footer), "\n")
+}
+
+func (m model) renderView() string {
 	var b strings.Builder
 	width := m.width
 	if width <= 0 {
@@ -678,7 +697,6 @@ func (m model) overviewLines() ([]string, []int) {
 		positions[i] += len(header)
 	}
 	lines := append(header, graph...)
-	lines = append(lines, "", mutedStyle.Render("Tables can appear in more than one flow."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."), mutedStyle.Render("No data may mean no events, delayed logs, or logging disabled."))
 	if m.overviewReady {
 		for _, err := range m.overviewRates.Errors {
 			lines = append(lines, errorStyle.Render("Metrics: "+err))
@@ -710,7 +728,19 @@ func (m model) renderOverview(width int) string {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
 	footer := "[enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
-	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
+	notes := []string{
+		"Tables can appear in more than one flow.",
+		"JOIN inputs may not trigger incremental MVs.",
+		"No data may mean no events, delayed logs, or logging disabled.",
+	}
+	for i := range notes {
+		notes[i] = mutedStyle.Render(ansi.Truncate(notes[i], maxInt(1, width), "…"))
+	}
+	padding := 0
+	if m.height > 0 {
+		padding = maxInt(0, m.height-(end-start)-7)
+	}
+	return strings.Join(lines[start:end], "\n") + strings.Repeat("\n", padding) + "\n\n" + strings.Join(notes, "\n") + "\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
 }
 
 func (m model) renderDetail(width, height int) string {
