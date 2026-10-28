@@ -898,6 +898,9 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 		}
 		v, ok := rates.Tables[name]
 		if !ok {
+			if label := metricStateLabel(rates.TableDiagnostics[name]); label != "" {
+				return readMetricStyle.Render("inserted: " + label)
+			}
 			return readMetricStyle.Render("inserted: no data")
 		}
 		return readMetricStyle.Render(fmt.Sprintf("inserted: %.1f rows/s", v))
@@ -910,11 +913,21 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	}
 	sourceColumnWidth = maxInt(sourceColumnWidth, sourceWidth+4)
 	mvMetric := mvRateText(ready, rates.MVAvailable, rates.MVRead, rates.MVWritten, rates.MVHistory)
+	if ready && !rates.MVAvailable {
+		if label := metricStateLabel(rates.MVDiagnostic); label != "" {
+			mvMetric += " · " + mutedStyle.Render(label)
+		}
+	}
 	mv := diagramBox("MATERIALIZED VIEW", view.Name, mvMetric, 0, 0, true, mvColor)
 	targetMV := "MV: no data"
 	targetValue, targetAvailable := rates.Tables[flow.Target]
 	targetHistory, targetHistoryAvailable := rates.TableHistory[flow.Target]
 	targetTotal := totalRateText(ready, targetValue, targetAvailable, targetHistory, targetHistoryAvailable)
+	if ready && !targetAvailable {
+		if label := metricStateLabel(rates.TableDiagnostics[flow.Target]); label != "" {
+			targetTotal += " · " + mutedStyle.Render(label)
+		}
+	}
 	if !ready {
 		targetMV = "MV: loading"
 	} else if rates.MVAvailable {

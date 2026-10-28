@@ -669,3 +669,14 @@ func TestViewStatusAndErrorNavigation(t *testing.T) {
 		t.Fatal("did not return to overview")
 	}
 }
+
+func TestMetricDiagnosticStatesAreVisible(t *testing.T) {
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}
+	rates := clickhouse.Rates{TableDiagnostics: map[string]clickhouse.MetricDiagnostic{"db.src": {State: clickhouse.MetricUnsupported, Detail: "Memory"}, "db.dst": {State: clickhouse.MetricLogError, Detail: "permission denied"}}, MVDiagnostic: clickhouse.MetricDiagnostic{State: clickhouse.MetricNoEvents}}
+	text := ansi.Strip(strings.Join(diagramLines(view, rates, true), "\n"))
+	for _, want := range []string{"inserted: unsupported engine", "no events observed", "total: no data · log error"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %s: %s", want, text)
+		}
+	}
+}

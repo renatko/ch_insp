@@ -71,3 +71,19 @@ func totalRateText(ready bool, value float64, available bool, history [5]uint64,
 	}
 	return writeMetricStyle.Render(text)
 }
+
+func metricStateLabel(d clickhouse.MetricDiagnostic) string {
+	switch d.State {
+	case clickhouse.MetricNoEvents:
+		return "no events observed"
+	case clickhouse.MetricUnsupported:
+		return "unsupported engine"
+	case clickhouse.MetricMetadataUnavailable:
+		return "metadata unavailable"
+	case clickhouse.MetricLogError:
+		return "log error"
+	case clickhouse.MetricUnknown:
+		return "unknown"
+	}
+	return ""
+}

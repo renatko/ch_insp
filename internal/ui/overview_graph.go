@@ -58,6 +58,8 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 					stat = "inserted: loading"
 				} else if value, ok := rates.Tables[source]; ok {
 					stat = fmt.Sprintf("inserted: %.1f rows/s", value)
+				} else if label := metricStateLabel(rates.TableDiagnostics[source]); label != "" {
+					stat = "inserted: " + label
 				}
 				stat = readMetricStyle.Render(stat)
 				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))
@@ -72,6 +74,11 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				history = &value
 			}
 			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
+			if ready && !available {
+				if label := metricStateLabel(rates.ViewDiagnostics[key]); label != "" {
+					mvStats += " · " + mutedStyle.Render(label)
+				}
+			}
 			if rates.Statuses != nil || rates.StatusError != "" {
 				var status *clickhouse.ViewStatus
 				if value, ok := rates.Statuses[key]; ok {
@@ -121,6 +128,11 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]
 		total := totalRateText(ready, value, available, history, hasHistory)
+		if ready && !available {
+			if label := metricStateLabel(rates.TableDiagnostics[group.target]); label != "" {
+				total += " · " + mutedStyle.Render(label)
+			}
+		}
 		targetName := shortName(group.target)
 		targetWidth := maxInt(lipgloss.Width(targetName), lipgloss.Width(total))
 		for j, row := range rows {

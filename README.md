@@ -137,9 +137,7 @@ uses the SQL-inferred relationships described above; complex SQL or internal
 targets may therefore not be matched.
 
 Both system logs must be configured and readable by the user. View logging
-also requires `log_query_views` for the queries that execute the view. An
-empty window is shown as `no data` because disabled or delayed logging cannot
-be distinguished from inactivity. Errors appear below the diagram. Metrics
+also requires `log_query_views` for the queries that execute the view. Diagnostics distinguish unsupported engines, unavailable metadata, log query errors and no observed events. No observed events still cannot distinguish inactivity from disabled, sampled or delayed logging. Errors appear below the diagram. Metrics
 cover the connected server only, not the entire cluster or replicas.
 
 ## Keys
