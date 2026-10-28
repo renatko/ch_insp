@@ -8,13 +8,12 @@ import (
 	"time"
 )
 
-// ViewHistory contains observed row counts in five consecutive 60-second
-// completed calendar-minute windows, ordered oldest to newest. Empty buckets mean
-// no logged events.
+// ViewHistory contains observed row counts in five completed calendar
+// intervals, ordered oldest to newest. Empty buckets mean no logged events.
 type ViewHistory struct{ Read, Written [5]uint64 }
 
-func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string) (map[string]ViewHistory, error) {
-	key := metricCacheKey(dsn, names, seconds)
+func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string, windowEnd time.Time) (map[string]ViewHistory, error) {
+	key := metricWindowKey(dsn, names, seconds, windowEnd)
 	if value, ok := viewHistoryCache.get(key); ok {
 		return value, nil
 	}
@@ -25,7 +24,7 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 			end = len(names)
 		}
 		args, marks := queryArgs(names[start:end])
-		query := viewHistoryQuery(marks, seconds)
+		query := viewHistoryQueryAt(marks, seconds, windowEnd)
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return result, err
@@ -55,8 +54,8 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 }
 
 // loadTableHistories counts rows in successfully created MergeTree parts.
-func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string) (map[string][5]uint64, error) {
-	key := metricCacheKey(dsn, names, seconds)
+func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string, windowEnd time.Time) (map[string][5]uint64, error) {
+	key := metricWindowKey(dsn, names, seconds, windowEnd)
 	if value, ok := tableHistoryCache.get(key); ok {
 		return value, nil
 	}
@@ -67,7 +66,7 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds
 			end = len(names)
 		}
 		args, marks := queryArgs(names[start:end])
-		query := tableHistoryQuery(marks, seconds)
+		query := tableHistoryQueryAt(marks, seconds, windowEnd)
 		rows, err := db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return result, err
@@ -106,8 +105,11 @@ func historyPeriod(seconds int) (int, string) {
 		return 60, "toStartOfMinute(now())"
 	}
 }
-func viewHistoryQuery(marks string, period int) string {
+func viewHistoryQueryAt(marks string, period int, end time.Time) string {
 	seconds, anchor := historyPeriod(period)
+	if !end.IsZero() {
+		anchor = fmt.Sprintf("toDateTime(%d)", end.Unix())
+	}
 	fields := []string{"view_name"}
 	for i := 5; i >= 1; i-- {
 		condition := fmt.Sprintf("event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND", anchor, i*seconds, anchor, (i-1)*seconds)
@@ -118,8 +120,11 @@ func viewHistoryQuery(marks string, period int) string {
  AND view_type = 'Materialized' AND status = 'QueryFinish' AND view_name IN (` + marks + `) GROUP BY view_name`
 }
 
-func tableHistoryQuery(marks string, period int) string {
+func tableHistoryQueryAt(marks string, period int, end time.Time) string {
 	seconds, anchor := historyPeriod(period)
+	if !end.IsZero() {
+		anchor = fmt.Sprintf("toDateTime(%d)", end.Unix())
+	}
 	fields := []string{"concat(database, '.', table)"}
 	for i := 5; i >= 1; i-- {
 		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND)", anchor, i*seconds, anchor, (i-1)*seconds))

@@ -20,3 +20,14 @@ func TestMetricCacheIsolationAndExpiry(t *testing.T) {
 		t.Fatal("expired cache value returned")
 	}
 }
+
+func TestMetricWindowCacheKeyChangesAtBoundary(t *testing.T) {
+	end := time.Date(2026, 10, 28, 18, 0, 0, 0, time.UTC)
+	first := metricWindowKey("dsn", []string{"db.mv"}, 60, end)
+	if first == metricWindowKey("dsn", []string{"db.mv"}, 60, end.Add(time.Minute)) {
+		t.Fatal("cache key reused across chart windows")
+	}
+	if first != metricWindowKey("dsn", []string{"db.mv"}, 60, end) {
+		t.Fatal("same window did not use same cache key")
+	}
+}

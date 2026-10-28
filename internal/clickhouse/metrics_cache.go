@@ -68,3 +68,11 @@ func metricCacheKey(dsn string, names []string, period int) [32]byte {
 var statusCache metricCache[map[string]ViewStatus]
 var viewHistoryCache metricCache[map[string]ViewHistory]
 var tableHistoryCache metricCache[map[string][5]uint64]
+
+func metricWindowKey(dsn string, names []string, period int, end time.Time) [32]byte {
+	base := metricCacheKey(dsn, names, period)
+	var value [40]byte
+	copy(value[:32], base[:])
+	binary.BigEndian.PutUint64(value[32:], uint64(end.Unix()))
+	return sha256.Sum256(value[:])
+}

@@ -81,6 +81,16 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				text := ansi.Strip(lines[positions[r.index]])
 				name := shortName(r.name)
 				at := strings.Index(text, name)
+				if r.kind == "MV" {
+					if arrow := strings.Index(text, " ─▶ "); arrow >= 0 {
+						start := arrow + len(" ─▶ ")
+						if offset := strings.Index(text[start:], m.views[r.index].Name); offset >= 0 {
+							at = start + offset
+						} else {
+							at = -1
+						}
+					}
+				}
 				if at >= 0 {
 					x := ansi.StringWidth(text[:at])
 					if x < m.overviewColumn || x+ansi.StringWidth(name) > m.overviewColumn+maxInt(1, m.width) {
@@ -100,7 +110,11 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 func (m model) renderSearch(width int) string {
 	results := m.searchResults()
-	lines := []string{accentStyle.Render("SEARCH FLOWS"), "/ " + m.searchQuery + "▏", mutedStyle.Render(fmt.Sprintf("%d matches in filtered views", len(results))), ""}
+	position := 0
+	if len(results) > 0 {
+		position = minInt(m.searchCursor, len(results)-1) + 1
+	}
+	lines := []string{accentStyle.Render("SEARCH FLOWS"), "/ " + m.searchQuery + "▏", mutedStyle.Render(fmt.Sprintf("%d/%d matches in filtered views", position, len(results))), ""}
 	visible := maxInt(1, m.height-10)
 	start := maxInt(0, m.searchCursor-visible+1)
 	end := minInt(len(results), start+visible)

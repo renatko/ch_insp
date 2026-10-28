@@ -1188,15 +1188,35 @@ func (m model) chartPeriodSeconds() int {
 	}
 }
 func (m model) chartPeriodLabel() string {
+	label := "5 × 1m completed"
 	switch m.chartPeriod {
 	case 1:
-		return "5 × 5m completed"
+		label = "5 × 5m completed"
 	case 2:
-		return "5 × 1h completed"
-	default:
-		return "5 × 1m completed"
+		label = "5 × 1h completed"
 	}
+	var end time.Time
+	if m.overview && m.overviewReady {
+		end = m.overviewRates.ChartWindowEnd
+	} else if !m.overview && m.metricsReady {
+		end = m.rates.ChartWindowEnd
+	}
+	if end.IsZero() {
+		return label
+	}
+	start := end.Add(-time.Duration(5*m.chartPeriodSeconds()) * time.Second)
+	format := "15:04"
+	if start.Year() != end.Year() || start.YearDay() != end.YearDay() {
+		format = "01-02 15:04"
+	}
+	_, startOffset := start.Zone()
+	_, endOffset := end.Zone()
+	if startOffset != endOffset {
+		return label + " " + start.Format(format+" -07:00") + "–" + end.Format(format+" -07:00")
+	}
+	return label + " " + start.Format(format) + "–" + end.Format(format) + " " + end.Format("MST")
 }
+
 func (m model) chartScaleLabel() string {
 	if m.chartCommon {
 		if m.overview {

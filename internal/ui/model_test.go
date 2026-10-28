@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"chinspector/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
@@ -758,5 +759,14 @@ func TestNodeSwitchFailureKeepsCurrentConnection(t *testing.T) {
 	m = next.(model)
 	if m.dsn != "clickhouse://u:secret@old:9000/db" || m.nodeName != "old" || m.nodeError == nil {
 		t.Fatal("failed switch changed connection")
+	}
+}
+
+func TestChartWindowLabelUsesObservedServerWindow(t *testing.T) {
+	end := time.Date(2026, 10, 29, 0, 0, 0, 0, time.FixedZone("CH", 4*60*60))
+	m := model{overview: true, overviewReady: true, chartPeriod: 1, overviewRates: clickhouse.OverviewRates{ChartWindowEnd: end}}
+	label := m.chartPeriodLabel()
+	if !strings.Contains(label, "10-28 23:35–10-29 00:00 CH") {
+		t.Fatalf("unexpected window: %s", label)
 	}
 }

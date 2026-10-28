@@ -101,7 +101,7 @@ executions in `system.query_views_log`; reads can include JOIN inputs. The
 internal target of a view without `TO` does not have a separate table rate.
 
 Next to MV read/write and target total, a five-bar chart shows observed rows in
-five completed calendar intervals, oldest on the left. Press `p` to switch between five 1-minute, 5-minute or 1-hour intervals; the current partial interval is excluded. Press `s` to switch overview charts between individual scales and shared scales for read, write and target totals separately. The overview header shows the shared maxima in rows per interval. A dot means no rows were observed in that
+five completed calendar intervals, oldest on the left. Press `p` to switch between five 1-minute, 5-minute or 1-hour intervals; the current partial interval is excluded. The displayed time range is anchored to ClickHouse server time, and history cache entries do not cross interval boundaries. Press `s` to switch overview charts between individual scales and shared scales for read, write and target totals separately. The overview header shows the shared maxima in rows per interval. A dot means no rows were observed in that
 interval, which can also happen when logging is missing or delayed. The charts
 use the same local-node successful MV events and successful `NewPart` events as
 the rates; they do not include other cluster nodes, failed view executions or

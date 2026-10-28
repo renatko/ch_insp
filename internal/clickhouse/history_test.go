@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Exercise the real ClickHouse expressions at every bucket boundary when the
@@ -17,9 +18,10 @@ func TestHistoryQueriesWithClickHouseLocal(t *testing.T) {
 	for _, period := range []int{60, 300, 3600} {
 		period := period
 		t.Run(fmt.Sprintf("%ds", period), func(t *testing.T) {
-			_, anchor := historyPeriod(period)
-			viewQuery := strings.ReplaceAll(viewHistoryQuery("'db.mv'", period), "system.query_views_log", "view_events")
-			partQuery := strings.ReplaceAll(tableHistoryQuery("'db.dst'", period), "system.part_log", "part_events")
+			end := time.Now().UTC().Truncate(time.Hour)
+			anchor := fmt.Sprintf("toDateTime(%d)", end.Unix())
+			viewQuery := strings.ReplaceAll(viewHistoryQueryAt("'db.mv'", period, end), "system.query_views_log", "view_events")
+			partQuery := strings.ReplaceAll(tableHistoryQueryAt("'db.dst'", period, end), "system.part_log", "part_events")
 			setup := `CREATE TABLE view_events (view_name String, event_date Date, event_time DateTime, view_type String, status String, read_rows UInt64, written_rows UInt64) ENGINE=Memory;
    CREATE TABLE part_events (database String, table String, event_date Date, event_time DateTime, event_type String, error UInt16, rows UInt64) ENGINE=Memory; `
 			timestamp := anchor + "-toIntervalSecond(n)"

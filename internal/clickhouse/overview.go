@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 )
 
 type ViewRate struct{ Read, Written float64 }
@@ -18,6 +19,7 @@ type OverviewRates struct {
 	Statuses         map[string]ViewStatus
 	StatusError      string
 	SharedScale      bool
+	ChartWindowEnd   time.Time
 }
 
 // LoadOverviewRates reads the same local-node, 60-second log window as LoadRates,
@@ -149,15 +151,20 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View, period int
 	if statusErr != nil {
 		out.StatusError = statusErr.Error()
 	}
-	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames, period, dsn)
-	out.TableHistory = tableHistory
-	if tableHistoryErr != nil {
-		out.Errors = append(out.Errors, "part history: "+tableHistoryErr.Error())
-	}
-	history, historyErr := loadViewHistories(ctx, db, viewNames, period, dsn)
-	out.History = history
-	if historyErr != nil {
-		out.Errors = append(out.Errors, "view history: "+historyErr.Error())
+	_, anchor := historyPeriod(period)
+	if err := db.QueryRowContext(ctx, "SELECT "+anchor).Scan(&out.ChartWindowEnd); err != nil {
+		out.Errors = append(out.Errors, "chart window: "+err.Error())
+	} else {
+		tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames, period, dsn, out.ChartWindowEnd)
+		out.TableHistory = tableHistory
+		if tableHistoryErr != nil {
+			out.Errors = append(out.Errors, "part history: "+tableHistoryErr.Error())
+		}
+		history, historyErr := loadViewHistories(ctx, db, viewNames, period, dsn, out.ChartWindowEnd)
+		out.History = history
+		if historyErr != nil {
+			out.Errors = append(out.Errors, "view history: "+historyErr.Error())
+		}
 	}
 	return out
 }
