@@ -195,7 +195,14 @@ func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []V
 	if err := db.QueryRowContext(ctx, "SELECT "+anchor).Scan(&out.ChartWindowEnd); err != nil {
 		out.Errors = append(out.Errors, "chart window: "+err.Error())
 	} else {
-		tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames, period, dsn, out.ChartWindowEnd)
+		var historyTables []string
+		for _, name := range tableNames {
+			state := out.TableDiagnostics[name].State
+			if state != MetricUnsupported && state != MetricMetadataUnavailable {
+				historyTables = append(historyTables, name)
+			}
+		}
+		tableHistory, tableHistoryErr := loadTableHistories(ctx, db, historyTables, period, dsn, out.ChartWindowEnd)
 		out.TableHistory = tableHistory
 		if tableHistoryErr != nil {
 			out.Errors = append(out.Errors, "part history: "+tableHistoryErr.Error())

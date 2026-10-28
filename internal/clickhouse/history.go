@@ -47,7 +47,16 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 		}
 		rows.Close()
 		if err != nil {
+			// A partially read batch cannot be used as a complete history.
+			for _, name := range names[start:end] {
+				delete(result, name)
+			}
 			return result, err
+		}
+		for _, name := range names[start:end] {
+			if _, ok := result[name]; !ok {
+				result[name] = ViewHistory{}
+			}
 		}
 	}
 	viewHistoryCache.put(key, result, 20*time.Second)
@@ -89,7 +98,15 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds
 		}
 		rows.Close()
 		if err != nil {
+			for _, name := range names[start:end] {
+				delete(result, name)
+			}
 			return result, err
+		}
+		for _, name := range names[start:end] {
+			if _, ok := result[name]; !ok {
+				result[name] = TableHistory{}
+			}
 		}
 	}
 	tableHistoryCache.put(key, result, 20*time.Second)
