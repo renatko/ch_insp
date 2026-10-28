@@ -61,6 +61,9 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchQuery = string(r[:len(r)-1])
 		}
 		m.searchCursor = 0
+	case " ":
+		m.searchQuery += " "
+		m.searchCursor = 0
 	case "enter":
 		if len(results) == 0 {
 			return m, nil

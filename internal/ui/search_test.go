@@ -37,3 +37,17 @@ func TestSearchFindsNodesAndNavigates(t *testing.T) {
 		t.Fatal("source search navigated to wrong flow")
 	}
 }
+
+func TestSearchAcceptsSpacesInQuotedNames(t *testing.T) {
+	view := clickhouse.View{Database: "db", Name: "order history", Definition: "CREATE MATERIALIZED VIEW `order history` TO target AS SELECT * FROM source"}
+	m := model{searching: true, views: []clickhouse.View{view}}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("order")})
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("history")})
+	m = next.(model)
+	if m.searchQuery != "order history" || len(m.searchResults()) != 1 {
+		t.Fatalf("search failed: %q %#v", m.searchQuery, m.searchResults())
+	}
+}
