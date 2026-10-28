@@ -142,9 +142,9 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				if targetSelected {
 					targetStyle = targetStyle.Background(selectionBackground).Bold(true)
 				}
-				name := targetName
+				name := "  " + targetName
 				if targetSelected {
-					name = pad(name, targetWidth)
+					name = "› " + pad(targetName, targetWidth)
 				}
 				line += " " + targetStyle.Render(name)
 			}
@@ -160,9 +160,9 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			}
 			if j == center {
 				if targetSelected {
-					stats += " " + restoreMetricBackground(mutedStyle.Background(selectionBackground).Render(pad(total, targetWidth)))
+					stats += " " + restoreMetricBackground(mutedStyle.Background(selectionBackground).Render("  "+pad(total, targetWidth)))
 				} else {
-					stats += mutedStyle.Render(" " + total)
+					stats += mutedStyle.Render("   " + total)
 				}
 			}
 			lines = append(lines, stats)
@@ -311,10 +311,15 @@ func (m *model) keepOverviewTargetVisible() {
 		m.overviewScroll = pos.line
 	}
 	width := maxInt(1, m.width)
-	if pos.column < m.overviewColumn {
-		m.overviewColumn = pos.column
+	left := maxInt(0, pos.column-2) // Include the selection marker.
+	if left < m.overviewColumn {
+		m.overviewColumn = left
 	} else if pos.column+pos.width > m.overviewColumn+width {
-		m.overviewColumn = maxInt(0, pos.column+pos.width-width)
+		if pos.column+pos.width-left > width {
+			m.overviewColumn = left
+		} else {
+			m.overviewColumn = maxInt(0, pos.column+pos.width-width)
+		}
 	}
 }
 func (m *model) moveOverviewTarget(delta int) {

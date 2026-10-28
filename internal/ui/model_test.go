@@ -572,6 +572,9 @@ func TestOverviewTargetSelectionHasEvenWidth(t *testing.T) {
 			}
 			return first, lipgloss.Width(line[:last+end])
 		}
+		if !strings.Contains(ansi.Strip(lines[positions[0]]), "› "+target) {
+			t.Fatalf("target marker missing: %s", lines[positions[0]])
+		}
 		firstStart, firstEnd := extent(lines[positions[0]])
 		secondStart, secondEnd := extent(lines[positions[0]+1])
 		if firstStart != secondStart || firstEnd != secondEnd {
