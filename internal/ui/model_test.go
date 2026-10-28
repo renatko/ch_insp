@@ -101,7 +101,7 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.source": 10, "db.middle": 7}, Views: map[string]clickhouse.ViewRate{"db.mv1": {Read: 10, Written: 5}}}}
 	lines, starts := m.overviewLines()
 	joined := strings.Join(lines, "\n")
-	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "parts: 10.0 rows/s", "read 10.0 / write 5.0 rows/s", "MV: 5.0 rows/s · total: 7.0 rows/s"} {
+	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "parts: 10.0 rows/s", "read 10.0 / write 5.0 rows/s", "total: 7.0 rows/s"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview missing %q:\n%s", value, joined)
 		}
@@ -128,7 +128,7 @@ func TestOverviewOpenSelectedView(t *testing.T) {
 	}
 }
 
-func TestOverviewSharesTargetAndSelectedMVRate(t *testing.T) {
+func TestOverviewSharesTargetAndShowsTotalRate(t *testing.T) {
 	m := model{overviewReady: true, selected: 1, views: []clickhouse.View{
 		{Database: "db", Name: "first_mv", Definition: "CREATE MATERIALIZED VIEW first_mv TO destination AS SELECT * FROM first"},
 		{Database: "db", Name: "second_mv", Definition: "CREATE MATERIALIZED VIEW second_mv TO destination AS SELECT * FROM second"},
@@ -138,10 +138,13 @@ func TestOverviewSharesTargetAndSelectedMVRate(t *testing.T) {
 	if strings.Count(joined, "│ destination") != 1 {
 		t.Fatalf("expected one target box:\n%s", joined)
 	}
-	for _, want := range []string{"first_mv", "second_mv", "▶", "MV: 2.0 rows/s · total: 9.0 rows/s"} {
+	for _, want := range []string{"first_mv", "second_mv", "▶", "total: 9.0 rows/s"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q in:\n%s", want, joined)
 		}
+	}
+	if strings.Contains(joined, "MV:") {
+		t.Fatalf("overview target should not show selected MV rate:\n%s", joined)
 	}
 	if starts[0] >= starts[1] {
 		t.Fatalf("unexpected selection positions: %v", starts)

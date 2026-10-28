@@ -37,14 +37,12 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 		var block []string
 		var connections []int
 		groupWidth := 0
-		selectedInGroup := false
 		for _, i := range group.indices {
 			view := views[i]
 			positions[i] = len(lines) + len(block)
 			marker := "  "
 			if i == selected {
 				marker = accentStyle.Render("› ")
-				selectedInGroup = true
 			}
 			block = append(block, marker+groupStyle.Bold(true).Render(view.Name))
 			viewRates := clickhouse.Rates{Tables: rates.Tables}
@@ -62,20 +60,15 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 		}
 		first, last := connections[0], connections[len(connections)-1]
 		center := connections[len(connections)/2]
-		mvMetric, totalMetric := "MV: no data", "total: no data"
+		totalMetric := "total: no data"
 		if !ready {
-			mvMetric, totalMetric = "MV: loading", "total: loading"
+			totalMetric = "total: loading"
 		} else {
-			if !selectedInGroup {
-				mvMetric = "MV: select a view"
-			} else if rate, ok := rates.Views[views[selected].Database+"."+views[selected].Name]; ok {
-				mvMetric = fmt.Sprintf("MV: %.1f rows/s", rate.Written)
-			}
 			if value, ok := rates.Tables[group.target]; ok {
 				totalMetric = fmt.Sprintf("total: %.1f rows/s", value)
 			}
 		}
-		target := diagramBox("TARGET", shortName(group.target), mvMetric+" · "+totalMetric, 0, 0, false, groupStyle)
+		target := diagramBox("TARGET", shortName(group.target), totalMetric, 0, 0, false, groupStyle)
 		for row, content := range block {
 			isConnection := false
 			for _, pos := range connections {
