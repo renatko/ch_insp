@@ -10,7 +10,7 @@ import (
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonNone {
-		if m.overview && !m.loading && m.err == nil && !m.filtering && !m.choosingDatabase {
+		if m.overview && !m.loading && m.err == nil && !m.searching && !m.filtering && !m.choosingDatabase {
 			m.hoverOverview(msg.X, msg.Y)
 		}
 		return m, nil
@@ -23,6 +23,19 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m.Update(mouseKey(key))
 		}
 		if m.loading || m.err != nil {
+			return m, nil
+		}
+		if m.searching {
+			results := m.searchResults()
+			visible := maxInt(1, m.height-10)
+			start := maxInt(0, m.searchCursor-visible+1)
+			index := start + msg.Y - 6
+			if msg.Y >= 6 && index >= start && index < minInt(len(results), start+visible) {
+				if index == m.searchCursor {
+					return m.updateSearch(mouseKey("enter"))
+				}
+				m.searchCursor = index
+			}
 			return m, nil
 		}
 		if m.filtering {
@@ -148,6 +161,17 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.loading || m.err != nil {
 		return m, nil
 	}
+	if m.searching {
+		delta := 0
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			delta = 3
+		}
+		m.searchCursor = minInt(maxInt(0, m.searchCursor+delta), maxInt(0, len(m.searchResults())-1))
+		return m, nil
+	}
 	if m.filtering {
 		delta := 0
 		if msg.Button == tea.MouseButtonWheelUp {
@@ -238,7 +262,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

@@ -120,6 +120,8 @@ palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `→` to select its target, then `Enter` to open the target table; `↑` / `↓` move between target groups and `←` returns focus to the MV. Moving the mouse over a flow or target selects it; click the selected item to open it. The selected item is highlighted. Use `H` / `L`, Shift+arrow or Shift+mouse wheel for horizontal scrolling; page scrolling is also supported. The overview help stays at the top and shortcuts stay at the bottom while the diagram scrolls. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
+Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters.
+
 Press `f` to filter views by source and/or target tables. The lists are built
 from all discovered views in the current database. Use Tab to switch lists,
 arrows or the mouse wheel to navigate, and Space or a click to toggle tables.

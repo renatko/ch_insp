@@ -44,6 +44,9 @@ type model struct {
 	choosingDatabase       bool
 	databaseCursor         int
 	filtering              bool
+	searching              bool
+	searchQuery            string
+	searchCursor           int
 	filterSource           []string
 	filterTarget           []string
 	draftSource            []string
@@ -248,6 +251,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.searching {
+			return m.updateSearch(msg)
+		}
 		if m.filtering {
 			return m.updateFilter(msg)
 		}
@@ -290,6 +296,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "/":
+			if !m.loading && m.err == nil {
+				m.searching = true
+				m.searchQuery = ""
+				m.searchCursor = 0
+			}
+			return m, nil
 		case "q", "ctrl+c":
 			m.cancelColumns()
 			return m, tea.Quit
@@ -582,6 +595,7 @@ func contains(items []string, value string) bool {
 }
 
 func (m *model) filterViews() {
+	m.searching = false
 	m.overviewTargetFocus = false
 	m.viewRevision++
 	m.views = nil
@@ -650,6 +664,9 @@ func (m model) renderView() string {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
 		return b.String()
+	}
+	if m.searching {
+		return b.String() + m.renderSearch(width)
 	}
 	if m.filtering {
 		return b.String() + m.renderFilter(width)
@@ -805,7 +822,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
+	footer := "[/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
