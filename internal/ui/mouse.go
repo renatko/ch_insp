@@ -10,7 +10,7 @@ import (
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonNone {
-		if m.overview && !m.loading && m.err == nil && !m.searching && !m.filtering && !m.choosingDatabase {
+		if m.overview && !m.loading && m.err == nil && !m.choosingNode && !m.searching && !m.filtering && !m.choosingDatabase {
 			m.hoverOverview(msg.X, msg.Y)
 		}
 		return m, nil
@@ -23,6 +23,22 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m.Update(mouseKey(key))
 		}
 		if m.loading || m.err != nil {
+			return m, nil
+		}
+		if m.choosingNode {
+			visible := maxInt(1, m.height-11)
+			start := maxInt(0, m.nodeCursor-visible+1)
+			firstRow := 6
+			if m.nodeError != nil {
+				firstRow++
+			}
+			index := start + msg.Y - firstRow
+			if !m.nodeLoading && msg.Y >= firstRow && index >= start && index < minInt(len(m.nodes), start+visible) {
+				if index == m.nodeCursor {
+					return m, m.connectNode(m.nodes[index])
+				}
+				m.nodeCursor = index
+			}
 			return m, nil
 		}
 		if m.searching {
@@ -180,6 +196,17 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.loading || m.err != nil {
 		return m, nil
 	}
+	if m.choosingNode {
+		delta := 0
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			delta = 3
+		}
+		m.nodeCursor = minInt(maxInt(0, m.nodeCursor+delta), maxInt(0, len(m.nodes)-1))
+		return m, nil
+	}
 	if m.searching {
 		delta := 0
 		if msg.Button == tea.MouseButtonWheelUp {
@@ -281,7 +308,7 @@ func (m model) clickedAction(x, y int) string {
 		return ""
 	}
 	line := ansi.Strip(lines[y])
-	keys := []string{"p", "s", "g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
+	keys := []string{"n", "p", "s", "g", "/", "e", "t", "c", "f", "o", "enter", "b", "d", "r", "esc", "ctrl+x", "q"}
 	for _, key := range keys {
 		marker := "[" + key + "]"
 		at := strings.Index(line, marker)

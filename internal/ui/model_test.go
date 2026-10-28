@@ -739,3 +739,24 @@ func TestChartPeriodAndSharedScale(t *testing.T) {
 		t.Fatalf("wrong shared scale: %s", bars)
 	}
 }
+
+func TestNodeSwitchFailureKeepsCurrentConnection(t *testing.T) {
+	m := model{dsn: "clickhouse://u:secret@old:9000/db", width: 120, height: 25, nodeName: "old", views: []clickhouse.View{{Database: "db", Name: "mv"}}}
+	next, cmd := m.Update(mouseKey("n"))
+	m = next.(model)
+	if !m.choosingNode || !m.nodeLoading || cmd == nil {
+		t.Fatal("node selection did not load")
+	}
+	next, _ = m.Update(nodesLoadedMsg{request: m.nodeRequest, nodes: []clickhouse.Node{{Cluster: "c", Host: "new", Port: 9000}}})
+	m = next.(model)
+	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.nodeLoading || cmd == nil {
+		t.Fatal("node connection did not start")
+	}
+	next, _ = m.Update(nodeConnectedMsg{request: m.nodeRequest, err: fmt.Errorf("connection refused")})
+	m = next.(model)
+	if m.dsn != "clickhouse://u:secret@old:9000/db" || m.nodeName != "old" || m.nodeError == nil {
+		t.Fatal("failed switch changed connection")
+	}
+}

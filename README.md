@@ -31,6 +31,8 @@ view's inferred source-to-view-to-target diagram and `CREATE` definition. It onl
 configured ClickHouse user should have permission to read the relevant system
 metadata.
 
+The header shows the connected node. Press `n` to inspect entries from `system.clusters` and connect directly to an advertised native TCP node using the current credentials and TLS settings. The current connection remains active if validation fails. Addresses must be reachable from the client; HTTP connections cannot use this switch because the cluster advertises native ports. Metrics remain local to the selected node; cluster-wide aggregation is not inferred.
+
 The initial database is the connection's current database. Press `b` to choose
 another database, including one with no materialized views. The active database
 is shown in the header; names in the list and diagram are unqualified. A view

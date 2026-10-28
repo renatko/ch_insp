@@ -44,6 +44,13 @@ type model struct {
 	dsn                      string
 	databases                []string
 	database                 string
+	nodeName                 string
+	choosingNode             bool
+	nodeLoading              bool
+	nodeError                error
+	nodes                    []clickhouse.Node
+	nodeCursor               int
+	nodeRequest              uint64
 	allViews                 []clickhouse.View
 	choosingDatabase         bool
 	databaseCursor           int
@@ -199,6 +206,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.overviewReady = false
 		if msg.err == nil {
 			m.databases, m.allViews = msg.catalog.Databases, msg.catalog.Views
+			m.nodeName = msg.catalog.Node
 			if !contains(m.databases, m.database) {
 				m.database = msg.catalog.CurrentDatabase
 				if !contains(m.databases, m.database) {
@@ -225,6 +233,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil && !m.overview && len(m.views) > 0 && !m.metricsBusy {
 			m.metricsBusy = true
 			return m, loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch)
+		}
+	case nodesLoadedMsg:
+		if m.choosingNode && msg.request == m.nodeRequest {
+			m.nodeLoading = false
+			m.nodes = msg.nodes
+			m.nodeError = msg.err
+			m.nodeCursor = 0
+		}
+	case nodeConnectedMsg:
+		if m.choosingNode && msg.request == m.nodeRequest {
+			m.nodeLoading = false
+			if msg.err != nil {
+				m.nodeError = msg.err
+				return m, nil
+			}
+			m.cancelColumns()
+			m.dsn = msg.dsn
+			m.nodeName = msg.catalog.Node
+			m.databases = msg.catalog.Databases
+			m.allViews = msg.catalog.Views
+			if !contains(m.databases, m.database) {
+				m.database = msg.catalog.CurrentDatabase
+			}
+			m.filterViews()
+			m.selected = 0
+			m.lineOffset = 0
+			m.columnOffset = 0
+			m.overviewScroll = 0
+			m.overviewColumn = 0
+			m.chartEpoch++
+			m.metricsBusy = false
+			m.overviewBusy = false
+			m.metricsReady = false
+			m.overviewReady = false
+			m.choosingNode = false
+			if len(m.views) > 0 {
+				if m.overview {
+					m.overviewBusy = true
+					return m, loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.chartEpoch)
+				}
+				m.metricsBusy = true
+				return m, tea.Batch(loadMetrics(m.dsn, m.views[m.selected], m.chartPeriodSeconds(), m.chartEpoch), m.columnCmdIfActive())
+			}
 		}
 	case metricsTickMsg:
 		if m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.overviewBusy {
@@ -270,6 +321,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		if m.choosingNode {
+			switch msg.String() {
+			case "esc":
+				m.choosingNode = false
+				m.nodeRequest++
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "up", "k":
+				m.nodeCursor = maxInt(0, m.nodeCursor-1)
+			case "down", "j":
+				m.nodeCursor = minInt(maxInt(0, len(m.nodes)-1), m.nodeCursor+1)
+			case "enter":
+				if !m.nodeLoading && len(m.nodes) > 0 {
+					return m, m.connectNode(m.nodes[m.nodeCursor])
+				}
+			}
+			return m, nil
+		}
 		if m.searching {
 			return m.updateSearch(msg)
 		}
@@ -320,6 +389,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "n":
+			if !m.loading && m.err == nil {
+				m.choosingNode = true
+				return m, m.loadNodes()
+			}
+			return m, nil
 		case "p":
 			m.chartPeriod = (m.chartPeriod + 1) % 3
 			m.chartEpoch++
@@ -698,6 +773,9 @@ func (m model) renderView() string {
 	if m.database != "" {
 		b.WriteString(accentStyle.Render("  /  DB: " + m.database))
 	}
+	if m.nodeName != "" {
+		b.WriteString(mutedStyle.Render("  /  node: " + m.nodeName))
+	}
 	b.WriteString("\n\n")
 
 	if m.loading {
@@ -711,6 +789,9 @@ func (m model) renderView() string {
 		b.WriteString("\n\n")
 		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
 		return b.String()
+	}
+	if m.choosingNode {
+		return b.String() + m.renderNodes(width)
 	}
 	if m.searching {
 		return b.String() + m.renderSearch(width)
@@ -871,7 +952,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[p] period  [s] scale  [g] graph  [/] search  [e] errors  [enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
+	footer := "[enter] open  [f] filter  [/] search  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
