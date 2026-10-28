@@ -398,3 +398,106 @@ func TestUnsupportedUnionRemainsExplicit(t *testing.T) {
 		t.Fatalf("UNION should not be presented as fully resolved: %#v", result)
 	}
 }
+
+func TestDerivedWildcardResolvesSimplePhysicalSource(t *testing.T) {
+	definitions := []string{
+		"CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT * FROM db.events) SELECT id FROM data",
+		"CREATE MATERIALIZED VIEW db.mv TO db.out AS SELECT q.id FROM (SELECT e.* FROM db.events e) q",
+	}
+	for _, definition := range definitions {
+		view := View{Database: "db", Name: "mv", Definition: definition}
+		plan, err := parseLineage(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := analyzeColumns(view, plan, lineageFixture(), nil)
+		input := strings.Join(result.Columns[0].Inputs, " ")
+		if !strings.Contains(input, "events.id (UInt64)") || strings.Contains(input, "ambiguous") || strings.Contains(input, "unresolved") {
+			t.Fatalf("wildcard was not resolved: %s", input)
+		}
+	}
+}
+
+func TestDerivedWildcardExplainsIncompleteMetadata(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT * FROM db.events) SELECT id FROM data"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := lineageFixture()
+	delete(metadata, "db.events")
+	result := analyzeColumns(view, plan, metadata, nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "source metadata incomplete for db.events") || !strings.Contains(input, "system.columns") || strings.Contains(input, "ambiguous or metadata incomplete") {
+		t.Fatalf("missing actionable reason: %s", input)
+	}
+}
+
+func TestDerivedWildcardWithMultipleSourcesIsNotGuessed(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT * FROM db.events e JOIN db.orders o ON e.id = o.id) SELECT id FROM data"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analyzeColumns(view, plan, lineageFixture(), nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "wildcard spans multiple or unknown inputs") {
+		t.Fatalf("wildcard should not be guessed: %s", input)
+	}
+}
+
+func TestDerivedWildcardAndExplicitOutputWithoutCollision(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT *, upper(name) AS upper_name FROM db.events) SELECT upper_name FROM data"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analyzeColumns(view, plan, lineageFixture(), nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "events.name (String)") || strings.Contains(input, "unresolved") || strings.Contains(input, "ambiguous") {
+		t.Fatalf("explicit output should resolve: %s", input)
+	}
+}
+
+func TestAliasWithMissingMetadataReportsMissingTable(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS SELECT price * 2 AS doubled, doubled + 1 AS total FROM db.orders"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := lineageFixture()
+	delete(metadata, "db.orders")
+	result := analyzeColumns(view, plan, metadata, nil)
+	input := strings.Join(result.Columns[1].Inputs, " ")
+	if !strings.Contains(input, "source metadata incomplete for db.orders") || strings.Contains(input, "ambiguous alias or source") {
+		t.Fatalf("metadata error confused with ambiguity: %s", input)
+	}
+}
+
+func TestDerivedWildcardDoesNotGuessDuplicateOutput(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT *, upper(name) AS name FROM db.events) SELECT name FROM data"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analyzeColumns(view, plan, lineageFixture(), nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "explicit output and wildcard may both produce name") {
+		t.Fatalf("duplicate output should remain uncertain: %s", input)
+	}
+}
+
+func TestDerivedWildcardOnAliasColumnIsSettingsDependent(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH data AS (SELECT * FROM db.events) SELECT derived FROM data"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := lineageFixture()
+	metadata["db.events"] = append(metadata["db.events"], tableColumn{Name: "derived", Type: "UInt64", DefaultKind: "ALIAS"})
+	result := analyzeColumns(view, plan, metadata, nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "wildcard inclusion of ALIAS columns depends on ClickHouse settings") {
+		t.Fatalf("settings-dependent wildcard should remain uncertain: %s", input)
+	}
+}

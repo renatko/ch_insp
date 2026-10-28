@@ -195,7 +195,7 @@ func resolveExpression(expr parser.Expr, scope *lineageScope, metadata map[strin
 			}
 			reason := resolved.reason
 			if reason == "" {
-				reason = "ambiguous or metadata incomplete"
+				reason = "unresolved: source cannot be identified; inspect SQL and metadata"
 			}
 			if len(resolved.inputs) > 0 {
 				reason += ": " + strings.Join(resolved.inputs, ", ")
@@ -284,8 +284,11 @@ func resolveScopedReference(scope *lineageScope, ref sqlReference, metadata map[
 					return referenceResult{uncertain: true, reason: "unresolved: cyclic alias"}
 				}
 				physical := resolveFromRelations(scope, ref, metadata, stack)
-				if physical.found || physical.uncertain {
-					return referenceResult{uncertain: true, reason: "ambiguous alias or source column"}
+				if physical.uncertain {
+					return physical
+				}
+				if physical.found {
+					return referenceResult{uncertain: true, inputs: physical.inputs, reason: "ambiguous: alias and source column share this name; check prefer_column_name_to_alias"}
 				}
 				stack[key] = true
 				values := resolveExpression(alias, scope, metadata, stack)
@@ -301,6 +304,7 @@ func resolveFromRelations(scope *lineageScope, ref sqlReference, metadata map[st
 	var candidates []referenceResult
 	uncertain := scope.incomplete
 	reason := ""
+	var missing []string
 	if scope.incomplete {
 		reason = "unresolved: unsupported query scope"
 	}
@@ -318,7 +322,7 @@ func resolveFromRelations(scope *lineageScope, ref sqlReference, metadata map[st
 			cols, ok := metadata[rel.table.key()]
 			if !ok {
 				uncertain = true
-				reason = "unresolved: source metadata incomplete"
+				missing = append(missing, rel.table.key())
 				continue
 			}
 			for _, col := range cols {
@@ -338,14 +342,22 @@ func resolveFromRelations(scope *lineageScope, ref sqlReference, metadata map[st
 			}
 		} else {
 			uncertain = true
+			reason = "unresolved: unsupported source"
 		}
+	}
+	if len(missing) > 0 {
+		reason = "unresolved: source metadata incomplete for " + strings.Join(missing, ", ") + "; check system.columns access"
 	}
 	if len(candidates) > 1 {
 		var inputs []string
 		for _, candidate := range candidates {
 			inputs = append(inputs, candidate.inputs...)
 		}
-		return referenceResult{inputs: inputs, uncertain: true, reason: "ambiguous"}
+		reason := "ambiguous: column occurs in multiple sources"
+		if len(missing) > 0 {
+			reason += "; metadata also missing for " + strings.Join(missing, ", ")
+		}
+		return referenceResult{inputs: inputs, uncertain: true, reason: reason}
 	}
 	if len(candidates) == 1 {
 		result := candidates[0]
@@ -360,10 +372,14 @@ func resolveFromRelations(scope *lineageScope, ref sqlReference, metadata map[st
 
 func resolveDerivedOutput(scope *lineageScope, name string, metadata map[string][]tableColumn, stack map[string]bool) referenceResult {
 	if scope.query == nil || scope.incomplete {
-		return referenceResult{uncertain: true}
+		return referenceResult{uncertain: true, reason: "unresolved: unsupported derived query"}
 	}
 	var matches []*parser.SelectItem
+	wildcards := 0
 	for _, item := range scope.query.SelectItems {
+		if item.Expr.String() == "*" || strings.HasSuffix(item.Expr.String(), ".*") {
+			wildcards++
+		}
 		if item.Alias != nil && item.Alias.Name == name {
 			matches = append(matches, item)
 			continue
@@ -373,25 +389,111 @@ func resolveDerivedOutput(scope *lineageScope, name string, metadata map[string]
 		}
 	}
 	if len(matches) > 1 {
-		return referenceResult{uncertain: true}
+		return referenceResult{uncertain: true, reason: "ambiguous: duplicate derived output name"}
 	}
 	if len(matches) == 1 {
+		if wildcards > 0 {
+			if reason := wildcardOutputCollision(scope, name, metadata); reason != "" {
+				return referenceResult{uncertain: true, reason: reason}
+			}
+		}
 		item := matches[0]
 		key := fmt.Sprintf("%p:output:%s", scope, name)
 		if stack[key] {
-			return referenceResult{uncertain: true}
+			return referenceResult{uncertain: true, reason: "unresolved: cyclic derived column reference"}
 		}
 		stack[key] = true
 		inputs := resolveExpression(item.Expr, scope, metadata, stack)
 		delete(stack, key)
 		return referenceResult{found: true, inputs: withTransformation(inputs, name, item.Expr.String())}
 	}
+	if wildcards > 1 {
+		return referenceResult{uncertain: true, reason: "unresolved: multiple wildcard projections require manual inspection"}
+	}
 	for _, item := range scope.query.SelectItems {
-		if item.Expr.String() == "*" || strings.HasSuffix(item.Expr.String(), ".*") {
-			return referenceResult{uncertain: true}
+		expression := item.Expr.String()
+		if expression == "*" || strings.HasSuffix(expression, ".*") {
+			if len(item.Modifiers) > 0 {
+				return referenceResult{uncertain: true, reason: "unresolved: wildcard modifiers require manual inspection"}
+			}
+			qualifier := ""
+			if expression != "*" {
+				if nested, ok := item.Expr.(*parser.NestedIdentifier); ok && nested.Ident != nil {
+					qualifier = nested.Ident.Name
+				} else {
+					return referenceResult{uncertain: true, reason: "unresolved: unsupported qualified wildcard"}
+				}
+			}
+			var candidates []lineageRelation
+			for _, rel := range scope.relations {
+				if qualifier == "" || qualifier == rel.alias || (rel.table != nil && (qualifier == rel.table.Name || qualifier == rel.table.key())) {
+					candidates = append(candidates, rel)
+				}
+			}
+			if len(candidates) != 1 {
+				return referenceResult{uncertain: true, reason: "unresolved: wildcard spans multiple or unknown inputs"}
+			}
+			if candidates[0].table != nil {
+				table := candidates[0].table
+				cols, ok := metadata[table.key()]
+				if !ok {
+					return referenceResult{uncertain: true, reason: "unresolved: source metadata incomplete for " + table.key() + "; check system.columns access"}
+				}
+				for _, col := range cols {
+					if col.Name == name && (col.DefaultKind == "ALIAS" || col.DefaultKind == "MATERIALIZED" || col.DefaultKind == "EPHEMERAL") {
+						return referenceResult{uncertain: true, reason: "unresolved: wildcard inclusion of " + col.DefaultKind + " columns depends on ClickHouse settings"}
+					}
+				}
+			}
+			ref := sqlReference{name: name, qualifier: qualifier}
+			result := resolveFromRelations(scope, ref, metadata, stack)
+			if result.found && !result.uncertain {
+				result.inputs = withTransformation(result.inputs, name, expression)
+			}
+			return result
 		}
 	}
 	return referenceResult{}
+}
+
+func wildcardOutputCollision(scope *lineageScope, name string, metadata map[string][]tableColumn) string {
+	for _, item := range scope.query.SelectItems {
+		expression := item.Expr.String()
+		if expression != "*" && !strings.HasSuffix(expression, ".*") {
+			continue
+		}
+		if len(item.Modifiers) > 0 {
+			return "unresolved: wildcard modifiers require manual inspection"
+		}
+		qualifier := ""
+		if expression != "*" {
+			if nested, ok := item.Expr.(*parser.NestedIdentifier); ok && nested.Ident != nil {
+				qualifier = nested.Ident.Name
+			} else {
+				return "unresolved: unsupported qualified wildcard"
+			}
+		}
+		var candidates []lineageRelation
+		for _, rel := range scope.relations {
+			if qualifier == "" || qualifier == rel.alias || (rel.table != nil && (qualifier == rel.table.Name || qualifier == rel.table.key())) {
+				candidates = append(candidates, rel)
+			}
+		}
+		if len(candidates) != 1 || candidates[0].table == nil {
+			return "unresolved: cannot check wildcard output against derived or multiple inputs"
+		}
+		table := candidates[0].table
+		cols, ok := metadata[table.key()]
+		if !ok {
+			return "unresolved: source metadata incomplete for " + table.key() + "; check system.columns access"
+		}
+		for _, col := range cols {
+			if col.Name == name {
+				return "ambiguous: explicit output and wildcard may both produce " + name
+			}
+		}
+	}
+	return ""
 }
 
 func selectOutputName(expr parser.Expr) string {

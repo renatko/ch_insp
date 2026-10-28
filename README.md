@@ -64,6 +64,16 @@ inspection; wildcard expansion needs unambiguous source and MV metadata. A
 missing target match or type can also mean metadata is unavailable. Use `d`
 to inspect the original SQL.
 
+When a reference cannot be resolved, the column view distinguishes missing
+`system.columns` metadata, multiple possible sources, alias/name collisions,
+and unsupported wildcard or query constructs. For missing metadata it names
+the affected table and preserves ClickHouse errors in the warnings. A collision
+between an alias and a source column can depend on
+`prefer_column_name_to_alias`; the app does not assume which setting was used.
+Simple `SELECT *` inside a CTE or FROM subquery can be traced when a single
+physical source and its column metadata are available. Wildcards over multiple
+inputs, wildcard modifiers and settings-dependent columns remain uncertain.
+
 The diagram refreshes rates approximately every 5 seconds. Rates are local-node
 averages over the preceding 60 seconds, derived from asynchronously flushed
 system logs, so they can lag and undercount (including when query logging is
