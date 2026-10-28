@@ -42,6 +42,7 @@ type model struct {
 	draftSource      string
 	draftTarget      string
 	filterField      int
+	filterCursors    [2]int
 	viewRevision     int
 	views            []clickhouse.View
 	selected         int
@@ -238,9 +239,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "f":
 			if !m.loading && m.err == nil {
-				m.filtering = true
-				m.draftSource, m.draftTarget = m.filterSource, m.filterTarget
-				m.filterField = 0
+				m.openFilter()
 			}
 		case "up", "k":
 			if m.selected > 0 {
@@ -508,16 +507,12 @@ func (m *model) keepOverviewSelectionVisible() {
 }
 
 func (m model) renderOverview(width int) string {
-	lines, positions := m.overviewLines()
+	lines, _ := m.overviewLines()
 	visible := maxInt(1, m.height-7)
 	start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
 	end := minInt(len(lines), start+visible)
 	for i := start; i < end; i++ {
 		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
-		if m.selected < len(positions) && (i == positions[m.selected] || i == positions[m.selected]+1) {
-			padding := maxInt(0, width-lipgloss.Width(lines[i]))
-			lines[i] += lipgloss.NewStyle().Background(selectionBackground).Render(strings.Repeat(" ", padding))
-		}
 	}
 	footer := "[f] filter  [o] back  [enter] open MV  [b] database  [r] refresh  [q] quit"
 	return strings.Join(lines[start:end], "\n") + "\n\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))

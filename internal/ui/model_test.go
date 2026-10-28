@@ -232,7 +232,7 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 	}
 }
 
-func TestOverviewHighlightsBothSelectedLinesAcrossViewport(t *testing.T) {
+func TestOverviewHighlightsSourceAndMVOnly(t *testing.T) {
 	oldProfile := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(oldProfile)
@@ -243,9 +243,19 @@ func TestOverviewHighlightsBothSelectedLinesAcrossViewport(t *testing.T) {
 	_, positions := m.overviewLines()
 	lines := strings.Split(m.renderOverview(m.width), "\n")
 	for _, i := range []int{positions[1], positions[1] + 1} {
-		if !strings.Contains(lines[i], "48;2;51;65;85") || lipgloss.Width(lines[i]) != m.width {
-			t.Fatalf("line %d is not highlighted to viewport width: %q", i, lines[i])
+		if !strings.Contains(lines[i], "48;2;51;65;85") {
+			t.Fatalf("line %d is not highlighted: %q", i, lines[i])
 		}
+	}
+	nameLine := lines[positions[1]]
+	branch := strings.Index(nameLine, "──┴─▶")
+	if branch < 0 || strings.Contains(nameLine[branch:], "48;2;51;65;85") {
+		t.Fatalf("target branch is highlighted: %q", nameLine)
+	}
+	stats := lines[positions[1]+1]
+	total := strings.Index(stats, "total:")
+	if total < 0 || strings.Contains(stats[total:], "48;2;51;65;85") {
+		t.Fatalf("target statistics are highlighted: %q", stats)
 	}
 	if strings.Contains(lines[positions[0]], "48;2;51;65;85") {
 		t.Fatal("unselected row is highlighted")

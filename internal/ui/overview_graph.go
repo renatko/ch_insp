@@ -106,19 +106,19 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			case j == len(rows)-1:
 				branch = "──┘  "
 			}
-			line := marker + rowStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + rowStyle.Render(" ─▶ ") + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + rowStyle.Render(" "+branch)
+			line := marker + rowStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + rowStyle.Render(" ─▶ ") + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
 			if j == center {
-				line += rowStyle.Render(" " + shortName(group.target))
+				line += groupStyle.Render(" " + shortName(group.target))
 			}
 			lines = append(lines, line)
 			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth) + " ")
 			if j < len(rows)-1 {
-				stats += rowStyle.Render("  │  ")
+				stats += groupStyle.Render("  │  ")
 			} else {
-				stats += statsStyle.Render("     ")
+				stats += "     "
 			}
 			if j == center {
-				stats += statsStyle.Render(" " + total)
+				stats += mutedStyle.Render(" " + total)
 			}
 			lines = append(lines, stats)
 		}

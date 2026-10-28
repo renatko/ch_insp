@@ -49,14 +49,16 @@ group has its own color, including its inputs and
 views. Colors remain stable when filtering; with more than eight groups the
 palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The
-selected flow and its statistics are highlighted across the overview. The
+selected flow's inputs, MV, and their statistics are highlighted. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
-Press `f` to filter views by source and/or target table. Enter part of a table
-name (or a qualified `database.table` name); matching ignores case. When both
-fields are filled, both must match. Use Tab to move between fields, Enter to
-apply, Ctrl+X to clear both filters, and Esc to cancel. The filter applies to
+Press `f` to filter views by source and/or target table. The lists are built
+from all discovered views in the current database. Use Tab to switch lists,
+arrows or the mouse wheel to navigate, and Space or a click to select a table.
+Enter selects the focused table and applies both filters; Ctrl+X clears both,
+and Esc cancels. `(any table)` removes one filter. Identical table names from
+different databases include their database in the list. The filter applies to
 the list and overview and remains active when switching databases. Filtering
 uses the SQL-inferred relationships described above; complex SQL or internal
 targets may therefore not be matched.

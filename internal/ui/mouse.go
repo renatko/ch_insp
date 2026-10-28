@@ -20,11 +20,16 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.filtering {
-			if msg.Y == 5 {
+			if msg.Y == 4 {
+				lines := strings.Split(m.View(), "\n")
+				line := ansi.Strip(lines[4])
+				at := strings.Index(line, "[target]")
 				m.filterField = 0
-			}
-			if msg.Y == 7 {
-				m.filterField = 1
+				if at >= 0 && msg.X >= lipgloss.Width(line[:at]) {
+					m.filterField = 1
+				}
+			} else if msg.Y >= 7 && msg.Y < 7+m.filterVisible() {
+				m.selectFilterOption(m.filterField, m.filterStart()+msg.Y-7)
 			}
 			return m, nil
 		}
@@ -78,6 +83,17 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.filtering {
+		delta := 0
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			delta = 3
+		}
+		if delta != 0 {
+			field := m.filterField
+			m.filterCursors[field] = minInt(maxInt(0, m.filterCursors[field]+delta), len(m.filterOptions(field))-1)
+		}
 		return m, nil
 	}
 	if msg.Button == tea.MouseButtonWheelLeft || msg.Button == tea.MouseButtonWheelRight || (msg.Shift && (msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown)) {
