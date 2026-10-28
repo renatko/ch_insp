@@ -307,8 +307,9 @@ func (m *model) keepOverviewTargetVisible() {
 		return
 	}
 	visible := maxInt(1, m.height-7)
-	if pos.line < m.overviewScroll || pos.line+1 >= m.overviewScroll+visible {
-		m.overviewScroll = pos.line
+	line := pos.line - 4
+	if line < m.overviewScroll || line+1 >= m.overviewScroll+visible {
+		m.overviewScroll = line
 	}
 	width := maxInt(1, m.width)
 	left := maxInt(0, pos.column-2) // Include the selection marker.

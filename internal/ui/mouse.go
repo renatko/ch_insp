@@ -52,14 +52,14 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if m.overview && len(m.views) > 0 {
 			lines, starts := m.overviewLines()
 			visible := maxInt(1, m.height-7)
-			start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
+			start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-visible))
 			line := start + msg.Y - 2
 			allViews := m.allViews
 			if allViews == nil {
 				allViews = m.views
 			}
 			graph, _ := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
-			if msg.Y >= 2 && msg.Y < 2+visible && line >= 4 && line < 4+len(graph) {
+			if msg.Y >= 6 && msg.Y < 6+visible && line >= 4 && line < 4+len(graph) {
 				for _, target := range m.overviewTargets() {
 					x := msg.X + m.overviewColumn
 					if (line == target.line || line == target.line+1) && x >= target.column && x < target.column+target.width {
@@ -164,7 +164,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.overview {
 		lines, _ := m.overviewLines()
-		m.overviewScroll = minInt(maxInt(0, m.overviewScroll+delta), maxInt(0, len(lines)-maxInt(1, m.height-7)))
+		m.overviewScroll = minInt(maxInt(0, m.overviewScroll+delta), maxInt(0, len(lines)-4-maxInt(1, m.height-7)))
 		return m, nil
 	}
 	if m.width >= 70 && msg.X < maxInt(26, m.width/3) {
@@ -245,10 +245,10 @@ func (m *model) hoverOverview(x, y int) {
 	}
 	lines, positions := m.overviewLines()
 	visible := maxInt(1, m.height-7)
-	if y < 2 || y >= 2+visible {
+	if y < 6 || y >= 6+visible {
 		return
 	}
-	start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
+	start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-visible))
 	line := start + y - 2
 	if line < 0 || line >= len(lines) {
 		return

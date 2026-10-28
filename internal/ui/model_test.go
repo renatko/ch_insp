@@ -146,8 +146,8 @@ func TestOverviewKeyboardFollowsGroupedVisualOrder(t *testing.T) {
 			t.Fatalf("down selected %s, expected %s", m.views[m.selected].Name, expected)
 		}
 		lines, positions := m.overviewLines()
-		start := minInt(m.overviewScroll, maxInt(0, len(lines)-maxInt(1, m.height-7)))
-		if positions[m.selected] < start || positions[m.selected]+1 >= start+maxInt(1, m.height-7) {
+		start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-maxInt(1, m.height-7)))
+		if positions[m.selected]-4 < start || positions[m.selected]-4+1 >= start+maxInt(1, m.height-7) {
 			t.Fatalf("selected item is not visible: scroll=%d position=%d", start, positions[m.selected])
 		}
 	}
@@ -607,7 +607,7 @@ func TestHotkeysStayOnLastTerminalLine(t *testing.T) {
 	}
 }
 
-func TestOverviewNotesAndFooterRemainPinned(t *testing.T) {
+func TestOverviewHelpAndFooterRemainPinned(t *testing.T) {
 	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
 	for _, height := range []int{12, 25, 50} {
 		m := model{width: 120, height: height, database: "db", overview: true, views: views, allViews: views}
@@ -615,10 +615,25 @@ func TestOverviewNotesAndFooterRemainPinned(t *testing.T) {
 		if len(lines) != height {
 			t.Fatalf("height %d got %d lines", height, len(lines))
 		}
-		for i, want := range []string{"Tables can appear", "JOIN inputs", "No data may mean", "[enter]"} {
-			if !strings.Contains(ansi.Strip(lines[height-4+i]), want) {
-				t.Errorf("height %d: expected %q at line %d, got %q", height, want, height-4+i, lines[height-4+i])
+		for i, want := range []string{"FLOW OVERVIEW", "Rates: 60s", "Sources may repeat"} {
+			if !strings.Contains(ansi.Strip(lines[2+i]), want) {
+				t.Errorf("header %d: %s", i, lines[2+i])
 			}
 		}
+		if !strings.Contains(ansi.Strip(lines[height-1]), "[enter]") {
+			t.Fatal("footer not pinned")
+		}
+	}
+}
+
+func TestOverviewHeaderPinnedWhenScrolled(t *testing.T) {
+	views := make([]clickhouse.View, 12)
+	for i := range views {
+		views[i] = clickhouse.View{Database: "db", Name: fmt.Sprintf("mv_%02d", i), Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}
+	}
+	m := model{width: 80, height: 12, database: "db", overview: true, views: views, allViews: views, overviewScroll: 9, overviewColumn: 10}
+	lines := strings.Split(m.View(), "\n")
+	if len(lines) != m.height || !strings.Contains(ansi.Strip(lines[2]), "FLOW OVERVIEW") || !strings.Contains(ansi.Strip(lines[3]), "Rates: 60s") || !strings.Contains(ansi.Strip(lines[4]), "Sources may repeat") || !strings.Contains(ansi.Strip(lines[m.height-1]), "[enter]") {
+		t.Fatalf("header or footer moved: %s", m.View())
 	}
 }

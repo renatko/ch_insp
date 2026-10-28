@@ -442,7 +442,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.overview {
 				lines, _ := m.overviewLines()
-				m.overviewScroll = minInt(m.overviewScroll+maxInt(1, m.height-7), maxInt(0, len(lines)-maxInt(1, m.height-7)))
+				m.overviewScroll = minInt(m.overviewScroll+maxInt(1, m.height-7), maxInt(0, len(lines)-4-maxInt(1, m.height-7)))
 				break
 			}
 			if len(m.views) > 0 {
@@ -684,7 +684,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes, oldest → newest"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 completed minutes · local node"), mutedStyle.Render("Sources may repeat · JOIN inputs may not trigger MVs · logs can be delayed or disabled"), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
@@ -711,7 +711,7 @@ func (m *model) keepOverviewSelectionVisible() {
 		return
 	}
 	visible := maxInt(1, m.height-7)
-	line := starts[m.selected]
+	line := starts[m.selected] - 4
 	if line < m.overviewScroll {
 		m.overviewScroll = line
 	} else if line+1 >= m.overviewScroll+visible {
@@ -722,25 +722,27 @@ func (m *model) keepOverviewSelectionVisible() {
 func (m model) renderOverview(width int) string {
 	lines, _ := m.overviewLines()
 	visible := maxInt(1, m.height-7)
-	start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
-	end := minInt(len(lines), start+visible)
-	for i := start; i < end; i++ {
-		lines[i] = ansi.Cut(lines[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
+	start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-visible))
+	end := minInt(len(lines), 4+start+visible)
+	header := append([]string(nil), lines[:4]...)
+	for i := range header {
+		header[i] = ansi.Truncate(header[i], maxInt(1, width), "…")
 	}
-	footer := "[enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
-	notes := []string{
-		"Tables can appear in more than one flow.",
-		"JOIN inputs may not trigger incremental MVs.",
-		"No data may mean no events, delayed logs, or logging disabled.",
-	}
-	for i := range notes {
-		notes[i] = mutedStyle.Render(ansi.Truncate(notes[i], maxInt(1, width), "…"))
+	content := append([]string(nil), lines[4+start:end]...)
+	for i := range content {
+		content[i] = ansi.Cut(content[i], m.overviewColumn, m.overviewColumn+maxInt(1, width))
 	}
 	padding := 0
 	if m.height > 0 {
-		padding = maxInt(0, m.height-(end-start)-7)
+		padding = maxInt(0, visible-len(content))
 	}
-	return strings.Join(lines[start:end], "\n") + strings.Repeat("\n", padding) + "\n\n" + strings.Join(notes, "\n") + "\n" + mutedStyle.Render(ansi.Truncate(footer, width, "…"))
+	footer := "[enter] open  ←/→ select target  H/L scroll  [t] target  [f] filter  [o] back  [b] database  [r] refresh  [q] quit"
+	result := append(header, content...)
+	for i := 0; i < padding; i++ {
+		result = append(result, "")
+	}
+	result = append(result, mutedStyle.Render(ansi.Truncate(footer, width, "…")))
+	return strings.Join(result, "\n")
 }
 
 func (m model) renderDetail(width, height int) string {
