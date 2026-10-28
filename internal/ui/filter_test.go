@@ -19,7 +19,7 @@ func filterFixture() model {
 
 func TestFilterSourceTargetAndDatabase(t *testing.T) {
 	m := filterFixture()
-	m.filterSource, m.filterTarget = "db.users", "db.out"
+	m.filterSource, m.filterTarget = []string{"db.users"}, []string{"db.out"}
 	m.filterViews()
 	if len(m.views) != 1 || m.views[0].Name != "one" {
 		t.Fatalf("unexpected results: %#v", m.views)
@@ -29,12 +29,12 @@ func TestFilterSourceTargetAndDatabase(t *testing.T) {
 	if len(m.views) != 1 || m.views[0].Name != "three" {
 		t.Fatalf("filter did not follow database: %#v", m.views)
 	}
-	m.filterTarget = "db.nonexistent"
+	m.filterTarget = []string{"db.nonexistent"}
 	m.filterViews()
 	if len(m.views) != 0 {
 		t.Fatal("expected no matches")
 	}
-	if matchesFlow(m.allViews[0], "db.user", "") {
+	if matchesFlow(m.allViews[0], []string{"db.user"}, nil) {
 		t.Fatal("filter should match the selected table exactly")
 	}
 }
@@ -56,9 +56,11 @@ func TestFilterListApplyCancelAndClear(t *testing.T) {
 	m = next.(model)
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(model)
 	next, _ = m.Update(mouseKey("enter"))
 	m = next.(model)
-	if m.filtering || m.filterSource != "db.users" || m.filterTarget != "db.out" || len(m.views) != 1 || m.views[0].Name != "one" {
+	if m.filtering || !contains(m.filterSource, "db.users") || !contains(m.filterTarget, "db.out") || len(m.views) != 1 || m.views[0].Name != "one" {
 		t.Fatalf("apply failed: %#v", m)
 	}
 	next, _ = m.Update(mouseKey("f"))
@@ -69,14 +71,14 @@ func TestFilterListApplyCancelAndClear(t *testing.T) {
 	m = next.(model)
 	next, _ = m.Update(mouseKey("esc"))
 	m = next.(model)
-	if m.filterSource != "db.users" {
+	if !contains(m.filterSource, "db.users") {
 		t.Fatal("cancel changed active filter")
 	}
 	next, _ = m.Update(mouseKey("f"))
 	m = next.(model)
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
 	m = next.(model)
-	if m.filterSource != "" || m.filterTarget != "" || len(m.views) != 2 {
+	if len(m.filterSource) != 0 || len(m.filterTarget) != 0 || len(m.views) != 2 {
 		t.Fatal("clear failed")
 	}
 }
@@ -94,13 +96,13 @@ func TestFilterMouseAndStaleMetrics(t *testing.T) {
 	}
 	next, _ = m.Update(mouseAtText(t, m, "out"))
 	m = next.(model)
-	if m.draftTarget != "db.out" {
+	if !contains(m.draftTarget, "db.out") {
 		t.Fatal("click did not select target")
 	}
 	oldRevision := m.viewRevision
 	next, _ = m.Update(mouseAtText(t, m, "[enter]"))
 	m = next.(model)
-	if m.filterTarget != "db.out" || len(m.views) != 1 {
+	if !contains(m.filterTarget, "db.out") || len(m.views) != 1 {
 		t.Fatal("click did not apply filter")
 	}
 	next, _ = m.Update(overviewLoadedMsg{database: "db", revision: oldRevision})
@@ -113,7 +115,7 @@ func TestFilterMouseAndStaleMetrics(t *testing.T) {
 func TestFilterListsDisambiguateAndKeepMissingSelection(t *testing.T) {
 	m := filterFixture()
 	m.allViews = append(m.allViews, clickhouse.View{Database: "db", Name: "four", Definition: "CREATE MATERIALIZED VIEW four TO db.out AS SELECT * FROM other.events"})
-	m.filterSource = "removed.events"
+	m.filterSource = []string{"removed.events"}
 	m.openFilter()
 	text := m.renderFilter(m.width)
 	for _, want := range []string{"events  [database: db]", "events  [database: other]", "events  [database: removed]  (not in current database)"} {
@@ -122,7 +124,7 @@ func TestFilterListsDisambiguateAndKeepMissingSelection(t *testing.T) {
 		}
 	}
 	m.selectFilterOption(0, 0)
-	if m.draftSource != "" || m.filterCursors[0] != 0 {
+	if len(m.draftSource) != 0 || m.filterCursors[0] != 0 {
 		t.Fatal("could not clear missing selection")
 	}
 }
@@ -144,14 +146,63 @@ func TestFilterWheelScrollAndChoose(t *testing.T) {
 	clicked := m.filterOptions(0)[m.filterStart()].value
 	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 3, Y: 7})
 	m = next.(model)
-	if m.draftSource != clicked {
-		t.Fatalf("selected %q; expected %q", m.draftSource, clicked)
+	if !contains(m.draftSource, clicked) {
+		t.Fatalf("selected %v; expected %q", m.draftSource, clicked)
+	}
+}
+
+func TestMultipleSelectionUsesAnyWithinEachList(t *testing.T) {
+	m := filterFixture()
+	m.filterSource = []string{"db.events", "db.users"}
+	m.filterTarget = []string{"db.out", "db.other"}
+	m.filterViews()
+	if len(m.views) != 2 {
+		t.Fatalf("expected both matching views, got %v", m.views)
+	}
+	m.filterSource = []string{"db.users"}
+	m.filterViews()
+	if len(m.views) != 1 || m.views[0].Name != "one" {
+		t.Fatalf("expected source AND target matching: %v", m.views)
+	}
+	m.filterTarget = []string{"db.other"}
+	m.filterViews()
+	if len(m.views) != 0 {
+		t.Fatalf("expected no view matching both filters: %v", m.views)
+	}
+}
+
+func TestMultipleSelectionToggleAndCancel(t *testing.T) {
+	m := filterFixture()
+	m.filterSource = []string{"db.events"}
+	m.openFilter()
+	options := m.filterOptions(0)
+	var users, events int
+	for i, option := range options {
+		if option.value == "db.users" {
+			users = i
+		}
+		if option.value == "db.events" {
+			events = i
+		}
+	}
+	m.selectFilterOption(0, users)
+	if !contains(m.draftSource, "db.events") || !contains(m.draftSource, "db.users") {
+		t.Fatalf("failed to select both: %v", m.draftSource)
+	}
+	m.selectFilterOption(0, events)
+	if contains(m.draftSource, "db.events") || !contains(m.draftSource, "db.users") {
+		t.Fatalf("failed to toggle one: %v", m.draftSource)
+	}
+	next, _ := m.Update(mouseKey("esc"))
+	m = next.(model)
+	if len(m.filterSource) != 1 || m.filterSource[0] != "db.events" {
+		t.Fatalf("cancel changed active selection: %v", m.filterSource)
 	}
 }
 
 func TestUnknownTargetDoesNotMatchTableName(t *testing.T) {
 	view := clickhouse.View{Database: "db", Definition: "CREATE MATERIALIZED VIEW mv ENGINE = MergeTree ORDER BY x AS SELECT * FROM src"}
-	if matchesFlow(view, "", "internal") {
+	if matchesFlow(view, nil, []string{"internal"}) {
 		t.Fatal("internal storage is not a table name")
 	}
 }

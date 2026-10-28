@@ -53,11 +53,12 @@ selected flow's inputs, MV, and their statistics are highlighted. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.
 
-Press `f` to filter views by source and/or target table. The lists are built
+Press `f` to filter views by source and/or target tables. The lists are built
 from all discovered views in the current database. Use Tab to switch lists,
-arrows or the mouse wheel to navigate, and Space or a click to select a table.
-Enter selects the focused table and applies both filters; Ctrl+X clears both,
-and Esc cancels. `(any table)` removes one filter. Identical table names from
+arrows or the mouse wheel to navigate, and Space or a click to toggle tables.
+Multiple choices within one list match any selected table; when both lists have
+choices, a view must match both. Enter applies the selection; Ctrl+X clears both,
+and Esc cancels. `(any table)` clears the current list. Identical table names from
 different databases include their database in the list. The filter applies to
 the list and overview and remains active when switching databases. Filtering
 uses the SQL-inferred relationships described above; complex SQL or internal

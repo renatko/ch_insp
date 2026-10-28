@@ -37,10 +37,10 @@ type model struct {
 	choosingDatabase bool
 	databaseCursor   int
 	filtering        bool
-	filterSource     string
-	filterTarget     string
-	draftSource      string
-	draftTarget      string
+	filterSource     []string
+	filterTarget     []string
+	draftSource      []string
+	draftTarget      []string
 	filterField      int
 	filterCursors    [2]int
 	viewRevision     int
@@ -435,7 +435,7 @@ func (m model) View() string {
 func (m model) renderList(width, height int) string {
 	var b strings.Builder
 	title := "MATERIALIZED VIEWS"
-	if m.filterSource != "" || m.filterTarget != "" {
+	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
 	b.WriteString(accentStyle.Render(truncate(title, width)))
@@ -467,7 +467,7 @@ func (m model) renderList(width, height int) string {
 // overviewLines renders a single graph for the selected database.
 func (m model) overviewLines() ([]string, []int) {
 	title := "FLOW OVERVIEW"
-	if m.filterSource != "" || m.filterTarget != "" {
+	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
 	header := []string{accentStyle.Render(title), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}

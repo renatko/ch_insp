@@ -13,15 +13,15 @@ import (
 
 type filterOption struct{ value, label string }
 
-func matchesFlow(view clickhouse.View, source, target string) bool {
-	if source == "" && target == "" {
+func matchesFlow(view clickhouse.View, source, target []string) bool {
+	if len(source) == 0 && len(target) == 0 {
 		return true
 	}
 	flow := clickhouse.InferFlow(view)
-	if source != "" {
+	if len(source) > 0 {
 		found := false
 		for _, name := range flow.Sources {
-			if name == source {
+			if contains(source, name) {
 				found = true
 				break
 			}
@@ -30,7 +30,7 @@ func matchesFlow(view clickhouse.View, source, target string) bool {
 			return false
 		}
 	}
-	return target == "" || (flow.Target != "internal storage (no TO)" && flow.Target != "unknown target" && flow.Target == target)
+	return len(target) == 0 || (flow.Target != "internal storage (no TO)" && flow.Target != "unknown target" && contains(target, flow.Target))
 }
 
 // Options are collected from all discovered views, not just filtered results.
@@ -53,9 +53,12 @@ func (m model) filterOptions(field int) []filterOption {
 	if field == 1 {
 		current = m.draftTarget
 	}
-	missing := current != "" && !unique[current]
-	if missing {
-		unique[current] = true
+	missing := map[string]bool{}
+	for _, name := range current {
+		if !unique[name] {
+			missing[name] = true
+			unique[name] = true
+		}
 	}
 	var names []string
 	counts := map[string]int{}
@@ -78,7 +81,7 @@ func (m model) filterOptions(field int) []filterOption {
 				label += "  [database: " + name[:i] + "]"
 			}
 		}
-		if missing && name == current {
+		if missing[name] {
 			label += "  (not in current database)"
 		}
 		options = append(options, filterOption{value: name, label: label})
@@ -88,7 +91,7 @@ func (m model) filterOptions(field int) []filterOption {
 
 func (m *model) openFilter() {
 	m.filtering = true
-	m.draftSource, m.draftTarget = m.filterSource, m.filterTarget
+	m.draftSource, m.draftTarget = append([]string(nil), m.filterSource...), append([]string(nil), m.filterTarget...)
 	m.filterField = 0
 	for field := 0; field < 2; field++ {
 		selected := m.draftSource
@@ -97,7 +100,7 @@ func (m *model) openFilter() {
 		}
 		m.filterCursors[field] = 0
 		for i, option := range m.filterOptions(field) {
-			if option.value == selected {
+			if contains(selected, option.value) {
 				m.filterCursors[field] = i
 				break
 			}
@@ -111,13 +114,30 @@ func (m *model) selectFilterOption(field, index int) {
 		return
 	}
 	m.filterField, m.filterCursors[field] = field, index
-	if field == 0 {
-		m.draftSource = options[index].value
-	} else {
-		m.draftTarget = options[index].value
+	current := m.draftSource
+	if field == 1 {
+		current = m.draftTarget
 	}
 	selected := options[index].value
-	for i, option := range m.filterOptions(field) {
+	var next []string
+	if selected != "" {
+		for _, name := range current {
+			if name != selected {
+				next = append(next, name)
+			}
+		}
+		if !contains(current, selected) {
+			next = append(next, selected)
+		}
+	}
+	if field == 0 {
+		m.draftSource = next
+	} else {
+		m.draftTarget = next
+	}
+	newOptions := m.filterOptions(field)
+	m.filterCursors[field] = minInt(index, len(newOptions)-1)
+	for i, option := range newOptions {
 		if option.value == selected {
 			m.filterCursors[field] = i
 			break
@@ -155,16 +175,15 @@ func (m model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.selectFilterOption(field, m.filterCursors[field])
 	case "enter":
-		m.selectFilterOption(field, m.filterCursors[field])
 		return m.applyFilter(m.draftSource, m.draftTarget)
 	case "ctrl+x":
-		return m.applyFilter("", "")
+		return m.applyFilter(nil, nil)
 	}
 	return m, nil
 }
 
-func (m model) applyFilter(source, target string) (tea.Model, tea.Cmd) {
-	m.filterSource, m.filterTarget = source, target
+func (m model) applyFilter(source, target []string) (tea.Model, tea.Cmd) {
+	m.filterSource, m.filterTarget = append([]string(nil), source...), append([]string(nil), target...)
 	m.filtering = false
 	m.selected, m.lineOffset, m.columnOffset, m.overviewScroll, m.overviewColumn = 0, 0, 0, 0, 0
 	m.metricsReady, m.overviewReady = false, false
@@ -184,11 +203,11 @@ func (m model) applyFilter(source, target string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) renderFilter(width int) string {
-	chosen := func(value string) string {
-		if value == "" {
+	chosen := func(values []string) string {
+		if len(values) == 0 {
 			return "any"
 		}
-		return shortName(value)
+		return fmt.Sprintf("%d selected", len(values))
 	}
 	current := m.draftSource
 	label := "SOURCE TABLES"
@@ -199,14 +218,14 @@ func (m model) renderFilter(width int) string {
 	options := m.filterOptions(m.filterField)
 	start := m.filterStart()
 	end := minInt(len(options), start+m.filterVisible())
-	lines := []string{accentStyle.Render("FILTER MATERIALIZED VIEWS"), mutedStyle.Render("Choose one source and/or target table."), ansi.Truncate(tabs, maxInt(1, width), "…"), "", accentStyle.Render(fmt.Sprintf("%s  %d/%d", label, m.filterCursors[m.filterField]+1, len(options)))}
+	lines := []string{accentStyle.Render("FILTER MATERIALIZED VIEWS"), mutedStyle.Render("Select multiple tables; matches any selection in each list."), ansi.Truncate(tabs, maxInt(1, width), "…"), "", accentStyle.Render(fmt.Sprintf("%s  %d/%d", label, m.filterCursors[m.filterField]+1, len(options)))}
 	for i := start; i < end; i++ {
 		prefix := "  "
 		if i == m.filterCursors[m.filterField] {
 			prefix = "› "
 		}
 		check := "[ ] "
-		if options[i].value == current {
+		if (options[i].value == "" && len(current) == 0) || contains(current, options[i].value) {
 			check = "[x] "
 		}
 		line := ansi.Truncate(prefix+check+options[i].label, maxInt(1, width), "…")
@@ -216,6 +235,6 @@ func (m model) renderFilter(width int) string {
 			lines = append(lines, line)
 		}
 	}
-	lines = append(lines, "", mutedStyle.Render(ansi.Truncate("Tab switch · ↑/↓ move · Space select", maxInt(1, width), "…")), mutedStyle.Render(ansi.Truncate("[enter] apply  [ctrl+x] clear filters  [esc] cancel", maxInt(1, width), "…")))
+	lines = append(lines, "", mutedStyle.Render(ansi.Truncate("Tab switch · ↑/↓ move · Space toggle", maxInt(1, width), "…")), mutedStyle.Render(ansi.Truncate("[enter] apply  [ctrl+x] clear filters  [esc] cancel", maxInt(1, width), "…")))
 	return strings.Join(lines, "\n")
 }
