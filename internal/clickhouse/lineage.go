@@ -136,7 +136,19 @@ func LoadColumnLineage(ctx context.Context, dsn string, view View) (ColumnLineag
 		}
 		metadata[table.key()] = cols
 	}
+	var setting string
+	var preference *aliasPreference
+	if err := db.QueryRowContext(ctx, "SELECT value FROM system.settings WHERE name = 'prefer_column_name_to_alias'").Scan(&setting); err == nil && (setting == "0" || setting == "1") {
+		preference = &aliasPreference{preferColumn: setting == "1"}
+		if !setAliasPreference(plan.scope, preference) {
+			clearAliasPreference(plan.scope)
+			preference = nil
+		}
+	}
 	result := analyzeColumns(view, plan, metadata, warnings)
+	if preference != nil && preference.used {
+		result.Warnings = append(result.Warnings, "Alias collisions resolved using current connection setting prefer_column_name_to_alias="+setting+"; MV execution settings may differ.")
+	}
 	enrichWithExplain(ctx, db, view, plan, metadata, &result)
 	return result, nil
 }

@@ -501,3 +501,52 @@ func TestDerivedWildcardOnAliasColumnIsSettingsDependent(t *testing.T) {
 		t.Fatalf("settings-dependent wildcard should remain uncertain: %s", input)
 	}
 }
+
+func TestAliasCollisionUsesCurrentPreference(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS SELECT price * 2 AS id, id + 1 AS total FROM db.orders"}
+	for _, tc := range []struct {
+		preferColumn bool
+		want, absent string
+	}{
+		{true, "orders.id (", "orders.price ("},
+		{false, "orders.price (", "orders.id ("},
+	} {
+		plan, err := parseLineage(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pref := &aliasPreference{preferColumn: tc.preferColumn}
+		if !setAliasPreference(plan.scope, pref) {
+			t.Fatal("setting was not applied")
+		}
+		result := analyzeColumns(view, plan, lineageFixture(), nil)
+		input := strings.Join(result.Columns[1].Inputs, " ")
+		if !strings.Contains(input, tc.want) || strings.Contains(input, tc.absent) || strings.Contains(input, "ambiguous") || !pref.used {
+			t.Fatalf("prefer column=%v: %s", tc.preferColumn, input)
+		}
+	}
+}
+
+func TestTableAndColumnAliasesTraceToPhysicalNames(t *testing.T) {
+	view := View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS WITH src AS (SELECT e.id AS event_id FROM db.events e) SELECT s.event_id AS result FROM src s"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := analyzeColumns(view, plan, lineageFixture(), nil)
+	input := strings.Join(result.Columns[0].Inputs, " ")
+	if !strings.Contains(input, "events.id (UInt64)") || !strings.Contains(input, "via event_id = e.id") || strings.Contains(input, "unresolved") {
+		t.Fatalf("alias chain not resolved: %s", input)
+	}
+}
+
+func TestAliasPreferenceDoesNotOverrideQuerySettings(t *testing.T) {
+	view := View{Database: "db", Definition: "CREATE MATERIALIZED VIEW db.mv TO db.out AS SELECT price * 2 AS id, id + 1 AS total FROM db.orders SETTINGS prefer_column_name_to_alias = 1"}
+	plan, err := parseLineage(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setAliasPreference(plan.scope, &aliasPreference{}) {
+		t.Fatal("query setting must not be replaced by session setting")
+	}
+}

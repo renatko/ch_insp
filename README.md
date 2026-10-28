@@ -69,8 +69,13 @@ When a reference cannot be resolved, the column view distinguishes missing
 and unsupported wildcard or query constructs. For missing metadata it names
 the affected table and preserves ClickHouse errors in the warnings. A collision
 between an alias and a source column can depend on
-`prefer_column_name_to_alias`. When safe to do so, the app uses the current
-ClickHouse analyzer and connection settings to resolve uncertain output columns.
+`prefer_column_name_to_alias`. The app reads this setting from the current
+connection to resolve collisions when a query does not override settings, and
+warns when the setting was used. If the setting is unavailable or the query
+overrides settings, the collision remains unresolved. Table and column aliases
+are traced to physical source names when possible, with intermediate expressions
+shown as `via`. When safe to do so, the app also uses the current
+ClickHouse analyzer to resolve uncertain output columns.
 This may differ from settings in effect when the view was created. Server analysis
 is restricted to supported query scopes without function calls or scalar
 subqueries, a matching current database, and local supported table engines;

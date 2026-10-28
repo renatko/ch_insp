@@ -13,7 +13,13 @@ type lineageRelation struct {
 	alias   string
 }
 
+type aliasPreference struct {
+	preferColumn bool
+	used         bool
+}
+
 type lineageScope struct {
+	preference *aliasPreference
 	query      *parser.SelectQuery
 	relations  []lineageRelation
 	aliases    map[string][]parser.Expr
@@ -288,7 +294,13 @@ func resolveScopedReference(scope *lineageScope, ref sqlReference, metadata map[
 					return physical
 				}
 				if physical.found {
-					return referenceResult{uncertain: true, inputs: physical.inputs, reason: "ambiguous: alias and source column share this name; check prefer_column_name_to_alias"}
+					if scope.preference == nil {
+						return referenceResult{uncertain: true, inputs: physical.inputs, reason: "ambiguous: alias and source column share this name; check prefer_column_name_to_alias"}
+					}
+					scope.preference.used = true
+					if scope.preference.preferColumn {
+						return physical
+					}
 				}
 				stack[key] = true
 				values := resolveExpression(alias, scope, metadata, stack)
@@ -599,4 +611,36 @@ func collectScopeReads(root *lineageScope, metadata map[string][]tableColumn) []
 	}
 	visit(root)
 	return result
+}
+
+// Do not apply session settings to a SELECT that overrides its own settings.
+func setAliasPreference(scope *lineageScope, pref *aliasPreference) bool {
+	if scope == nil || scope.query == nil || scope.query.Settings != nil {
+		return false
+	}
+	for _, rel := range scope.relations {
+		if rel.derived != nil && !setAliasPreference(rel.derived, pref) {
+			return false
+		}
+	}
+	for _, child := range scope.scalars {
+		if !setAliasPreference(child, pref) {
+			return false
+		}
+	}
+	scope.preference = pref
+	return true
+}
+
+func clearAliasPreference(scope *lineageScope) {
+	if scope == nil {
+		return
+	}
+	scope.preference = nil
+	for _, rel := range scope.relations {
+		clearAliasPreference(rel.derived)
+	}
+	for _, child := range scope.scalars {
+		clearAliasPreference(child)
+	}
 }
