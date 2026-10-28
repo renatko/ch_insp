@@ -40,11 +40,30 @@ func TestHistoryQueriesWithClickHouseLocal(t *testing.T) {
 					t.Fatalf("clickhouse local: %v: %s", err, out)
 				}
 				got := strings.TrimSpace(string(out))
-				want := "db.mv\t2\t4\t1\t2\t1\t2\t1\t2\t1\t2\ndb.dst\t6\t3\t3\t3\t3"
+				want := "db.mv\t2\t4\t2\t1\t2\t1\t1\t2\t1\t1\t2\t1\t1\t2\t1\ndb.dst\t6\t2\t3\t1\t3\t1\t3\t1\t3\t1"
 				if got != want {
 					t.Fatalf("unexpected buckets: %s", got)
 				}
 			})
 		}
+	}
+}
+
+func TestHistoryQueryDistinguishesZeroFromNoEvent(t *testing.T) {
+	binary, err := exec.LookPath("clickhouse")
+	if err != nil {
+		t.Skip("clickhouse local unavailable")
+	}
+	end := time.Now().UTC().Truncate(time.Minute)
+	query := strings.ReplaceAll(viewHistoryQueryAt("'db.mv'", 60, end), "system.query_views_log", "view_events")
+	setup := fmt.Sprintf(`CREATE TABLE view_events (view_name String, event_date Date, event_time DateTime, view_type String, status String, read_rows UInt64, written_rows UInt64) ENGINE=Memory;
+ INSERT INTO view_events SELECT 'db.mv',toDate(toDateTime(%d)-INTERVAL 1 SECOND),toDateTime(%d)-INTERVAL 1 SECOND,'Materialized','QueryFinish',0,0; `, end.Unix(), end.Unix())
+	out, err := exec.Command(binary, "local", "--multiquery", "--query", setup+query).CombinedOutput()
+	if err != nil {
+		t.Fatalf("clickhouse local: %v: %s", err, out)
+	}
+	parts := strings.Split(strings.TrimSpace(string(out)), "\t")
+	if len(parts) != 16 || parts[3] != "0" || parts[13] != "0" || parts[14] != "0" || parts[15] != "1" {
+		t.Fatalf("zero and missing indistinguishable: %q", out)
 	}
 }

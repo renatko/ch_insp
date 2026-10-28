@@ -439,19 +439,19 @@ func TestTargetTypesCompactAndShowDifferences(t *testing.T) {
 }
 
 func TestChartsShowFiveIntervals(t *testing.T) {
-	hist := clickhouse.ViewHistory{Read: [5]uint64{0, 10, 20, 0, 40}, Written: [5]uint64{5, 5, 0, 5, 5}}
+	hist := clickhouse.ViewHistory{Read: [5]uint64{0, 10, 20, 0, 40}, Written: [5]uint64{5, 5, 0, 0, 5}, Events: [5]uint64{1, 1, 1, 0, 1}}
 	tables := [5]uint64{1, 2, 3, 4, 5}
 	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
-	rates := clickhouse.Rates{MVAvailable: true, MVRead: 1, MVWritten: 2, MVHistory: &hist, Tables: map[string]float64{"db.dst": 3}, TableHistory: map[string][5]uint64{"db.dst": tables}}
+	rates := clickhouse.Rates{MVAvailable: true, MVRead: 1, MVWritten: 2, MVHistory: &hist, Tables: map[string]float64{"db.dst": 3}, TableHistory: map[string]clickhouse.TableHistory{"db.dst": {Rows: tables, Events: [5]uint64{1, 1, 1, 1, 1}}}}
 	detail := strings.Join(diagramLines(view, rates, true), "\n")
-	for _, part := range []string{"read ·▂▄·█ 1.0 rows/s", "write ██·██ 2.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
+	for _, part := range []string{"read 0▂▄·█ 1.0 rows/s", "write ██0·█ 2.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
 		if !strings.Contains(detail, part) {
 			t.Errorf("missing %q: %s", part, detail)
 		}
 	}
 	overview := clickhouse.OverviewRates{Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 1, Written: 2}}, History: map[string]clickhouse.ViewHistory{"db.mv": hist}, Tables: rates.Tables, TableHistory: rates.TableHistory}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
-	for _, part := range []string{"read ·▂▄·█ 1.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
+	for _, part := range []string{"read 0▂▄·█ 1.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
 		if !strings.Contains(strings.Join(lines, "\n"), part) {
 			t.Errorf("overview missing %q", part)
 		}
@@ -490,7 +490,7 @@ func TestOverviewAlignsMetricsAndTargetsAcrossGroups(t *testing.T) {
 		{Database: "db", Name: "another_mv", Definition: "CREATE MATERIALIZED VIEW another_mv TO target_a AS SELECT * FROM src"},
 		{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO target_b AS SELECT * FROM x"},
 	}
-	rates := clickhouse.OverviewRates{Tables: map[string]float64{"db.target_a": 1, "db.target_b": 2}, Views: map[string]clickhouse.ViewRate{"db.short_mv": {Read: 2, Written: 5}, "db.another_mv": {Read: 12345, Written: 5}, "db.mv": {Read: 12, Written: 6}}, History: map[string]clickhouse.ViewHistory{"db.short_mv": {Read: [5]uint64{1, 2, 3, 4, 5}}}}
+	rates := clickhouse.OverviewRates{Tables: map[string]float64{"db.target_a": 1, "db.target_b": 2}, Views: map[string]clickhouse.ViewRate{"db.short_mv": {Read: 2, Written: 5}, "db.another_mv": {Read: 12345, Written: 5}, "db.mv": {Read: 12, Written: 6}}, History: map[string]clickhouse.ViewHistory{"db.short_mv": {Read: [5]uint64{1, 2, 3, 4, 5}, Events: [5]uint64{1, 1, 1, 1, 1}}}}
 	lines, positions := overviewGraph(views, rates, true, 0, map[string]lipgloss.Color{})
 	col := func(line, pattern string) int {
 		line = ansi.Strip(line)
@@ -557,7 +557,7 @@ func TestOverviewTargetSelectionHasEvenWidth(t *testing.T) {
 	defer lipgloss.SetColorProfile(oldProfile)
 	for _, target := range []string{"dst", "very_long_destination_name_exceeding_statistics_width"} {
 		view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO " + target + " AS SELECT * FROM src"}
-		rates := clickhouse.OverviewRates{Tables: map[string]float64{"db." + target: 20.1}, TableHistory: map[string][5]uint64{"db." + target: {1, 2, 3, 4, 5}}}
+		rates := clickhouse.OverviewRates{Tables: map[string]float64{"db." + target: 20.1}, TableHistory: map[string]clickhouse.TableHistory{"db." + target: {Rows: [5]uint64{1, 2, 3, 4, 5}, Events: [5]uint64{1, 1, 1, 1, 1}}}}
 		lines, positions := overviewGraphFocused([]clickhouse.View{view}, rates, true, 0, map[string]lipgloss.Color{}, true)
 		bg := regexp.MustCompile("\\x1b\\[[0-9;]*48;2;51;65;85m")
 		extent := func(line string) (int, int) {
@@ -735,7 +735,7 @@ func TestChartPeriodAndSharedScale(t *testing.T) {
 	if !m.chartCommon {
 		t.Fatal("shared scale not selected")
 	}
-	bars := historyBarScaled([5]uint64{1, 1, 1, 1, 1}, 8)
+	bars := historyBarScaled([5]uint64{1, 1, 1, 1, 1}, [5]uint64{1, 1, 1, 1, 1}, 8)
 	if bars != "▁▁▁▁▁" {
 		t.Fatalf("wrong shared scale: %s", bars)
 	}

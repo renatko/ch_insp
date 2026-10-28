@@ -11,7 +11,7 @@ type Rates struct {
 	Tables            map[string]float64
 	TableDiagnostics  map[string]MetricDiagnostic
 	MVDiagnostic      MetricDiagnostic
-	TableHistory      map[string][5]uint64
+	TableHistory      map[string]TableHistory
 	MVRead, MVWritten float64
 	MVAvailable       bool
 	MVHistory         *ViewHistory

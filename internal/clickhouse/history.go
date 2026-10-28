@@ -10,7 +10,8 @@ import (
 
 // ViewHistory contains observed row counts in five completed calendar
 // intervals, ordered oldest to newest. Empty buckets mean no logged events.
-type ViewHistory struct{ Read, Written [5]uint64 }
+type ViewHistory struct{ Read, Written, Events [5]uint64 }
+type TableHistory struct{ Rows, Events [5]uint64 }
 
 func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string, windowEnd time.Time) (map[string]ViewHistory, error) {
 	key := metricWindowKey(dsn, names, seconds, windowEnd)
@@ -34,7 +35,7 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 			var history ViewHistory
 			values := []any{&name}
 			for i := 0; i < 5; i++ {
-				values = append(values, &history.Read[i], &history.Written[i])
+				values = append(values, &history.Read[i], &history.Written[i], &history.Events[i])
 			}
 			if err = rows.Scan(values...); err != nil {
 				break
@@ -54,12 +55,12 @@ func loadViewHistories(ctx context.Context, db *sql.DB, names []string, seconds 
 }
 
 // loadTableHistories counts rows in successfully created MergeTree parts.
-func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string, windowEnd time.Time) (map[string][5]uint64, error) {
+func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds int, dsn string, windowEnd time.Time) (map[string]TableHistory, error) {
 	key := metricWindowKey(dsn, names, seconds, windowEnd)
 	if value, ok := tableHistoryCache.get(key); ok {
 		return value, nil
 	}
-	result := make(map[string][5]uint64)
+	result := make(map[string]TableHistory)
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
 		if end > len(names) {
@@ -73,10 +74,10 @@ func loadTableHistories(ctx context.Context, db *sql.DB, names []string, seconds
 		}
 		for rows.Next() {
 			var name string
-			var history [5]uint64
+			var history TableHistory
 			values := []any{&name}
-			for i := range history {
-				values = append(values, &history[i])
+			for i := range history.Rows {
+				values = append(values, &history.Rows[i], &history.Events[i])
 			}
 			if err = rows.Scan(values...); err != nil {
 				break
@@ -113,7 +114,7 @@ func viewHistoryQueryAt(marks string, period int, end time.Time) string {
 	fields := []string{"view_name"}
 	for i := 5; i >= 1; i-- {
 		condition := fmt.Sprintf("event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND", anchor, i*seconds, anchor, (i-1)*seconds)
-		fields = append(fields, "sumIf(read_rows, "+condition+")", "sumIf(written_rows, "+condition+")")
+		fields = append(fields, "sumIf(read_rows, "+condition+")", "sumIf(written_rows, "+condition+")", "countIf("+condition+")")
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.query_views_log
  WHERE event_date >= today() - 1 AND event_time >= ` + anchor + fmt.Sprintf(" - INTERVAL %d SECOND", 5*seconds) + ` AND event_time < ` + anchor + `
@@ -127,7 +128,8 @@ func tableHistoryQueryAt(marks string, period int, end time.Time) string {
 	}
 	fields := []string{"concat(database, '.', table)"}
 	for i := 5; i >= 1; i-- {
-		fields = append(fields, fmt.Sprintf("sumIf(rows, event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND)", anchor, i*seconds, anchor, (i-1)*seconds))
+		condition := fmt.Sprintf("event_time >= %s - INTERVAL %d SECOND AND event_time < %s - INTERVAL %d SECOND", anchor, i*seconds, anchor, (i-1)*seconds)
+		fields = append(fields, "sumIf(rows, "+condition+")", "countIf("+condition+")")
 	}
 	return `SELECT ` + strings.Join(fields, ", ") + ` FROM system.part_log
  WHERE event_date >= today() - 1 AND event_time >= ` + anchor + fmt.Sprintf(" - INTERVAL %d SECOND", 5*seconds) + ` AND event_time < ` + anchor + `

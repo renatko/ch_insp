@@ -12,7 +12,7 @@ type OverviewRates struct {
 	Tables           map[string]float64
 	TableDiagnostics map[string]MetricDiagnostic
 	ViewDiagnostics  map[string]MetricDiagnostic
-	TableHistory     map[string][5]uint64
+	TableHistory     map[string]TableHistory
 	Views            map[string]ViewRate
 	History          map[string]ViewHistory
 	Errors           []string
