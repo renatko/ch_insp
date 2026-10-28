@@ -43,7 +43,9 @@ Press `o` to open a flow overview for every MV in the selected database. Views
 that write to the same target are grouped and connect to one target. Each MV
 occupies two lines: the flow, then rates directly below its inputs and MV. The
 target's total rate is shown directly below the target. Inputs may be repeated
-for different views. Each target group has its own color, including its inputs and
+for different views. Sources are bold, MV names italic, and targets regular;
+the terminal and font determine whether these styles are visible. Each target
+group has its own color, including its inputs and
 views. Colors remain stable when filtering; with more than eight groups the
 palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The

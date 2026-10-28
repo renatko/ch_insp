@@ -100,9 +100,9 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			case j == len(rows)-1:
 				branch = "──┘  "
 			}
-			line := marker + groupStyle.Render(pad(row.inputs, inputWidth)+" ─▶ "+pad(row.name, mvWidth)+" "+branch)
+			line := marker + groupStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + groupStyle.Render(" ─▶ ") + groupStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
 			if j == center {
-				line += " " + groupStyle.Bold(true).Render(shortName(group.target))
+				line += " " + groupStyle.Render(shortName(group.target))
 			}
 			lines = append(lines, line)
 			stats := "  " + mutedStyle.Render(pad(row.inputStats, inputWidth)+"    "+pad(row.mvStats, mvWidth)+" ")
