@@ -1,0 +1,38 @@
+# Disposable test cluster. Do not use this configuration for production.
+services:
+  ch1:
+    image: ${CHINSPECTOR_TEST_IMAGE:-clickhouse/clickhouse-server:25.2}
+    hostname: ch1
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    ports:
+      - "127.0.0.1:${CHINSPECTOR_TEST_PORT1:-19001}:9000"
+    volumes:
+      - ./config/common.xml:/etc/clickhouse-server/config.d/chinspector-common.xml:ro
+      - ./config/replica1.xml:/etc/clickhouse-server/config.d/chinspector-replica.xml:ro
+      - ./config/keeper.xml:/etc/clickhouse-server/config.d/chinspector-keeper.xml:ro
+      - ./config/users.xml:/etc/clickhouse-server/users.d/chinspector-users.xml:ro
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  ch2:
+    image: ${CHINSPECTOR_TEST_IMAGE:-clickhouse/clickhouse-server:25.2}
+    hostname: ch2
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
+    ports:
+      - "127.0.0.1:${CHINSPECTOR_TEST_PORT2:-19002}:9000"
+    volumes:
+      - ./config/common.xml:/etc/clickhouse-server/config.d/chinspector-common.xml:ro
+      - ./config/replica2.xml:/etc/clickhouse-server/config.d/chinspector-replica.xml:ro
+      - ./config/users.xml:/etc/clickhouse-server/users.d/chinspector-users.xml:ro
+    depends_on:
+      ch1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 60

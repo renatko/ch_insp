@@ -1,0 +1,25 @@
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+    <zookeeper>
+        <node><host>ch1</host><port>9181</port></node>
+    </zookeeper>
+    <remote_servers>
+        <chinspector_test>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica><host>ch1</host><port>9000</port></replica>
+                <replica><host>ch2</host><port>9000</port></replica>
+            </shard>
+        </chinspector_test>
+    </remote_servers>
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <flush_interval_milliseconds>750</flush_interval_milliseconds>
+    </part_log>
+    <query_views_log>
+        <database>system</database>
+        <table>query_views_log</table>
+        <flush_interval_milliseconds>750</flush_interval_milliseconds>
+    </query_views_log>
+</clickhouse>
