@@ -2,7 +2,10 @@ package ui
 
 import (
 	"chinspector/internal/clickhouse"
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+	"strings"
 )
 
 type dependencyItem struct {
@@ -75,6 +78,14 @@ func (m *model) openDependencies() {
 		table = m.targetData.Database + "." + m.targetData.Table
 	} else if m.overviewTargetFocus {
 		table = flow.Target
+	} else if len(flow.Sources) > 1 {
+		m.dependencyChoices = append([]string(nil), flow.Sources...)
+		if flow.Target != "" && flow.Target != "unknown target" && flow.Target != "internal storage (no TO)" && !contains(m.dependencyChoices, flow.Target) {
+			m.dependencyChoices = append(m.dependencyChoices, flow.Target)
+		}
+		m.dependencyChoice = 0
+		m.choosingDependency = true
+		return
 	} else if len(flow.Sources) > 0 {
 		table = flow.Sources[0]
 	} else {
@@ -83,6 +94,11 @@ func (m *model) openDependencies() {
 	if table == "" || table == "unknown target" || table == "internal storage (no TO)" {
 		return
 	}
+	m.openDependencyTable(table)
+}
+
+func (m *model) openDependencyTable(table string) {
+	m.choosingDependency = false
 	m.dependencyReturnScreen = "diagram"
 	switch {
 	case m.overview:
@@ -214,4 +230,47 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, true
 	}
 	return m, nil, false
+}
+
+func (m model) updateDependencyPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "g":
+		m.choosingDependency = false
+	case "ctrl+c", "q":
+		return m, tea.Quit
+	case "up", "k":
+		m.dependencyChoice = maxInt(0, m.dependencyChoice-1)
+	case "down", "j":
+		m.dependencyChoice = minInt(maxInt(0, len(m.dependencyChoices)-1), m.dependencyChoice+1)
+	case "enter":
+		if len(m.dependencyChoices) > 0 {
+			m.openDependencyTable(m.dependencyChoices[m.dependencyChoice])
+		}
+	}
+	return m, nil
+}
+func (m model) dependencyPickerVisible() int { return maxInt(1, m.height-9) }
+func (m model) dependencyPickerStart() int {
+	return maxInt(0, m.dependencyChoice-m.dependencyPickerVisible()+1)
+}
+func (m model) renderDependencyPicker(width int) string {
+	lines := []string{accentStyle.Render("SELECT TABLE"), mutedStyle.Render("Choose an input or target to inspect dependencies."), ""}
+	shortCounts := map[string]int{}
+	for _, name := range m.dependencyChoices {
+		shortCounts[shortName(name)]++
+	}
+	start := m.dependencyPickerStart()
+	end := minInt(len(m.dependencyChoices), start+m.dependencyPickerVisible())
+	for i := start; i < end; i++ {
+		name := shortName(m.dependencyChoices[i])
+		if shortCounts[name] > 1 {
+			name = m.dependencyChoices[i]
+		}
+		line := ansi.Truncate(fmt.Sprintf("  %s", name), maxInt(1, width), "…")
+		if i == m.dependencyChoice {
+			line = activeStyle.Render("›" + strings.TrimPrefix(line, " "))
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ select  [enter] open  [esc] cancel")), "\n")
 }

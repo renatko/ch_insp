@@ -180,3 +180,20 @@ func TestOverviewMouseHoverWithScrollOffsets(t *testing.T) {
 		t.Fatal("hover missed target in scrolled viewport")
 	}
 }
+
+func TestDependencyPickerMouseSelectsInput(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM db.orders a JOIN db.users b ON a.id=b.id"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	next, _ = m.Update(mouseAtText(t, m, "users"))
+	m = next.(model)
+	if m.dependencyChoice != 1 || !m.choosingDependency {
+		t.Fatal("mouse did not select second input")
+	}
+	next, _ = m.Update(mouseAtText(t, m, "users"))
+	m = next.(model)
+	if !m.dependencies || m.dependencyTable != "db.users" {
+		t.Fatal("mouse did not open selected input")
+	}
+}

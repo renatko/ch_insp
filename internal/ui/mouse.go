@@ -10,7 +10,7 @@ import (
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonNone {
-		if m.overview && !m.loading && m.err == nil && !m.choosingNode && !m.searching && !m.filtering && !m.choosingDatabase {
+		if m.overview && !m.loading && m.err == nil && !m.choosingDependency && !m.choosingNode && !m.searching && !m.filtering && !m.choosingDatabase {
 			m.hoverOverview(msg.X, msg.Y)
 		}
 		return m, nil
@@ -41,6 +41,16 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					return m, m.connectNode(m.nodes[index])
 				}
 				m.nodeCursor = index
+			}
+			return m, nil
+		}
+		if m.choosingDependency {
+			index := m.dependencyPickerStart() + msg.Y - 5
+			if msg.Y >= 5 && index >= m.dependencyPickerStart() && index < minInt(len(m.dependencyChoices), m.dependencyPickerStart()+m.dependencyPickerVisible()) {
+				if index == m.dependencyChoice {
+					return m.updateDependencyPicker(mouseKey("enter"))
+				}
+				m.dependencyChoice = index
 			}
 			return m, nil
 		}
@@ -212,6 +222,17 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.nodeCursor = minInt(maxInt(0, m.nodeCursor+delta), maxInt(0, len(m.nodes)-1))
+		return m, nil
+	}
+	if m.choosingDependency {
+		delta := 0
+		if msg.Button == tea.MouseButtonWheelUp {
+			delta = -3
+		}
+		if msg.Button == tea.MouseButtonWheelDown {
+			delta = 3
+		}
+		m.dependencyChoice = minInt(maxInt(0, m.dependencyChoice+delta), maxInt(0, len(m.dependencyChoices)-1))
 		return m, nil
 	}
 	if m.searching {

@@ -78,6 +78,9 @@ type model struct {
 	definition                     bool
 	dependencies                   bool
 	dependencyTable                string
+	choosingDependency             bool
+	dependencyChoices              []string
+	dependencyChoice               int
 	dependencyCursor               int
 	dependencyHistory              []string
 	dependencyReturnTarget         bool
@@ -392,6 +395,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.searching {
 			return m.updateSearch(msg)
+		}
+		if m.choosingDependency {
+			return m.updateDependencyPicker(msg)
 		}
 		if !m.filtering && !m.choosingDatabase {
 			if next, cmd, handled := m.updateDependencyKey(msg); handled {
@@ -902,6 +908,9 @@ func (m model) renderView() string {
 	}
 	if m.searching {
 		return b.String() + m.renderSearch(width)
+	}
+	if m.choosingDependency {
+		return b.String() + m.renderDependencyPicker(width)
 	}
 	if m.filtering {
 		return b.String() + m.renderFilter(width)

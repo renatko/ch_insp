@@ -971,3 +971,25 @@ func TestDependenciesReturnAndPreserveVisibleFilter(t *testing.T) {
 		t.Fatal("opening an already visible view cleared its filter")
 	}
 }
+
+func TestDependencyPickerSelectsSpecificJoinInput(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT a.id FROM db.orders a JOIN db.users b ON a.id=b.id"}}
+	m := model{width: 120, height: 25, database: "db", overview: true, views: views, allViews: views}
+	next, _ := m.Update(mouseKey("g"))
+	m = next.(model)
+	if !m.choosingDependency || m.dependencies || len(m.dependencyChoices) != 3 {
+		t.Fatalf("missing source picker: %#v", m.dependencyChoices)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if !m.dependencies || m.dependencyTable != "db.users" {
+		t.Fatalf("wrong input selected: %s", m.dependencyTable)
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	m = next.(model)
+	if !m.overview {
+		t.Fatal("did not restore overview")
+	}
+}
