@@ -222,7 +222,7 @@ func TestSelectAndWithAliasesTraceToPhysicalInputs(t *testing.T) {
 	}
 	result := analyzeColumns(view, plan, lineageFixture(), nil)
 	inputs := strings.Join(result.Columns[0].Inputs, " ")
-	if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "via doubled = price * 2") {
+	if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "→ doubled: price * 2") {
 		t.Fatalf("WITH alias not traced: %s", inputs)
 	}
 	view.Definition = "CREATE MATERIALIZED VIEW db.mv TO db.out AS SELECT price * 2 AS doubled, doubled + 1 AS final FROM db.orders"
@@ -232,7 +232,7 @@ func TestSelectAndWithAliasesTraceToPhysicalInputs(t *testing.T) {
 	}
 	result = analyzeColumns(view, plan, lineageFixture(), nil)
 	inputs = strings.Join(result.Columns[1].Inputs, " ")
-	if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "via doubled = price * 2") {
+	if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "→ doubled: price * 2") {
 		t.Fatalf("SELECT alias not traced: %s", inputs)
 	}
 }
@@ -252,7 +252,7 @@ func TestDerivedCTEAndFromSubqueryTraceTransformations(t *testing.T) {
 			t.Fatalf("physical metadata not requested: %#v", plan.sources)
 		}
 		inputs := strings.Join(result.Columns[0].Inputs, " ")
-		if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "via cost = price * 2") {
+		if !strings.Contains(inputs, "orders.price (UInt32)") || !strings.Contains(inputs, "→ cost: price * 2") {
 			t.Fatalf("derived input not traced: %s", inputs)
 		}
 		if !strings.Contains(strings.Join(result.AdditionalReads, " "), "orders.id (UInt64)") {
@@ -269,7 +269,7 @@ func TestClickHouseStoredCTEAggregation(t *testing.T) {
 	}
 	metadata := map[string][]tableColumn{"default.src": {{Name: "id", Type: "UInt64"}, {Name: "price", Type: "UInt64"}}, "default.mv": {{Name: "total", Type: "UInt64"}}, "default.dst": {{Name: "total", Type: "UInt64"}}}
 	result := analyzeColumns(view, plan, metadata, nil)
-	if len(result.Columns) != 1 || !strings.Contains(strings.Join(result.Columns[0].Inputs, " "), "src.price (UInt64) [via cost = price * 2]") || !strings.Contains(strings.Join(result.AdditionalReads, " "), "src.id (UInt64)") {
+	if len(result.Columns) != 1 || !strings.Contains(strings.Join(result.Columns[0].Inputs, " "), "src.price (UInt64) → cost: price * 2") || !strings.Contains(strings.Join(result.AdditionalReads, " "), "src.id (UInt64)") {
 		t.Fatalf("stored CTE was not traced: %#v", result)
 	}
 }
@@ -352,7 +352,7 @@ func TestScalarSubqueryTracesOwnSourcesAndConditions(t *testing.T) {
 		t.Fatalf("scalar source metadata not requested: %#v", plan.sources)
 	}
 	inputs := strings.Join(result.Columns[0].Inputs, " | ")
-	for _, want := range []string{"events.id (UInt64)", "orders.price (UInt32)", "orders.id (UInt64)", "via scalar subquery = sum(o.price)"} {
+	for _, want := range []string{"events.id (UInt64)", "orders.price (UInt32)", "orders.id (UInt64)", "→ scalar subquery: sum(o.price)"} {
 		if !strings.Contains(inputs, want) {
 			t.Errorf("missing %q in %s", want, inputs)
 		}
@@ -535,7 +535,7 @@ func TestTableAndColumnAliasesTraceToPhysicalNames(t *testing.T) {
 	}
 	result := analyzeColumns(view, plan, lineageFixture(), nil)
 	input := strings.Join(result.Columns[0].Inputs, " ")
-	if !strings.Contains(input, "events.id (UInt64)") || !strings.Contains(input, "via event_id = e.id") || strings.Contains(input, "unresolved") {
+	if !strings.Contains(input, "events.id (UInt64)") || !strings.Contains(input, "→ event_id") || strings.Contains(input, "unresolved") {
 		t.Fatalf("alias chain not resolved: %s", input)
 	}
 }
@@ -548,5 +548,21 @@ func TestAliasPreferenceDoesNotOverrideQuerySettings(t *testing.T) {
 	}
 	if setAliasPreference(plan.scope, &aliasPreference{}) {
 		t.Fatal("query setting must not be replaced by session setting")
+	}
+}
+
+func TestTransformationPathsAreReadable(t *testing.T) {
+	input := []string{"events.id (UInt64)"}
+	for _, tc := range []struct{ name, expression, want string }{
+		{"event_id", "e.id", "events.id (UInt64) → event_id"},
+		{"id", "e.id", "events.id (UInt64)"},
+		{"id", "*", "events.id (UInt64) → SELECT *"},
+		{"id", "e.*", "events.id (UInt64) → SELECT e.*"},
+		{"cost", "price * 2", "events.id (UInt64) → cost: price * 2"},
+	} {
+		got := withTransformation(input, tc.name, tc.expression)
+		if len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s = %s: got %v, want %s", tc.name, tc.expression, got, tc.want)
+		}
 	}
 }

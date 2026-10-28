@@ -57,7 +57,7 @@ of queries it also uses `EXPLAIN QUERY TREE`; it does not execute the view's SEL
 Column lineage is a best-effort analysis, not an execution trace. It
 follows supported SELECT and WITH aliases, CTEs, FROM subqueries, scalar
 subqueries and lambda parameters back to source columns; intermediate
-transformations are shown as `via` expressions. Ambiguous or unresolved
+transformations are shown as a chain such as `orders.price → cost: price * 2`. Ambiguous or unresolved
 identifiers are marked explicitly. Correlated subqueries, UNION, ARRAY JOIN,
 table functions, wildcard modifiers and other complex syntax can require manual
 inspection; wildcard expansion needs unambiguous source and MV metadata. A
@@ -74,7 +74,7 @@ connection to resolve collisions when a query does not override settings, and
 warns when the setting was used. If the setting is unavailable or the query
 overrides settings, the collision remains unresolved. Table and column aliases
 are traced to physical source names when possible, with intermediate expressions
-shown as `via`. When safe to do so, the app also uses the current
+shown as arrow-separated steps. When safe to do so, the app also uses the current
 ClickHouse analyzer to resolve uncertain output columns.
 This may differ from settings in effect when the view was created. Server analysis
 is restricted to supported query scopes without function calls or scalar

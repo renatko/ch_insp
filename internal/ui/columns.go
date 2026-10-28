@@ -65,7 +65,7 @@ func (m model) columnLines() []string {
 				if i == 0 {
 					label = "  INPUT: "
 				}
-				lines = append(lines, label+input)
+				lines = append(lines, label+styleColumnPath(input))
 			}
 		}
 		lines = append(lines, "")
@@ -76,7 +76,7 @@ func (m model) columnLines() []string {
 	if len(m.columnsData.AdditionalReads) > 0 {
 		lines = append(lines, accentStyle.Render("OTHER REFERENCES"), mutedStyle.Render("JOIN / WHERE / GROUP BY / ORDER BY and related clauses"))
 		for _, ref := range m.columnsData.AdditionalReads {
-			lines = append(lines, "  "+ref)
+			lines = append(lines, "  "+styleColumnPath(ref))
 		}
 		lines = append(lines, "")
 	}
@@ -98,4 +98,23 @@ func splitColumnLines(lines []string) []string {
 		out = append(out, strings.Split(line, "\n")...)
 	}
 	return out
+}
+
+// Wildcard steps carry no transformation and are visually secondary.
+func styleColumnPath(path string) string {
+	parts := strings.Split(path, " → ")
+	if len(parts) < 2 {
+		return path
+	}
+	var out strings.Builder
+	out.WriteString(parts[0])
+	for _, step := range parts[1:] {
+		text := " → " + step
+		if strings.HasPrefix(step, "SELECT ") && (step == "SELECT *" || strings.HasSuffix(step, ".*")) {
+			out.WriteString(mutedStyle.Render(text))
+		} else {
+			out.WriteString(text)
+		}
+	}
+	return out.String()
 }

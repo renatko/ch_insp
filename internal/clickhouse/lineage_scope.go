@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	parser "github.com/AfterShip/clickhouse-sql-parser/parser"
@@ -527,13 +528,26 @@ func selectOutputName(expr parser.Expr) string {
 	return ""
 }
 
+// A simple column reference is a rename; other expressions are transformations.
+var simpleColumnExpression = regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
 func withTransformation(inputs []string, name, expression string) []string {
 	if len(inputs) == 0 {
 		return []string{fmt.Sprintf("%s = %s (no explicit source columns)", name, expression)}
 	}
+	step := name + ": " + expression
+	if expression == "*" || strings.HasSuffix(expression, ".*") {
+		step = "SELECT " + expression
+	} else if simpleColumnExpression.MatchString(expression) {
+		parts := strings.Split(expression, ".")
+		if parts[len(parts)-1] == name {
+			return inputs
+		}
+		step = name
+	}
 	result := make([]string, 0, len(inputs))
 	for _, input := range inputs {
-		result = append(result, input+" [via "+name+" = "+expression+"]")
+		result = append(result, input+" → "+step)
 	}
 	return result
 }
