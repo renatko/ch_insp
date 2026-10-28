@@ -142,6 +142,16 @@ Both system logs must be configured and readable by the user. View logging
 also requires `log_query_views` for the queries that execute the view. Diagnostics distinguish unsupported engines, unavailable metadata, log query errors and no observed events. No observed events still cannot distinguish inactivity from disabled, sampled or delayed logging. Errors appear below the diagram. Metrics
 cover the connected server only, not the entire cluster or replicas.
 
+## Read-only cluster test
+
+The optional cluster integration check is intended for a disposable test cluster with at least two nodes. Set `CHINSPECTOR_TEST_CLUSTER_URL` in the environment and `CHINSPECTOR_TEST_CLUSTER_NAME` to the configured cluster, then run:
+
+```sh
+go test ./internal/clickhouse -run '^TestClusterSurveyIntegration$' -v
+```
+
+The test uses the existing credentials to discover and contact nodes and checks read access to the two system logs. It does not insert data or flush logs. It verifies connectivity and coverage only; it does not establish logical deduplication or validate cluster-wide aggregation. Do not put credentials in command-line arguments or commit them.
+
 ## Keys
 
 - `↑` / `↓` or `j` / `k`: select a view
