@@ -8,9 +8,11 @@ import (
 
 type ViewRate struct{ Read, Written float64 }
 type OverviewRates struct {
-	Tables map[string]float64
-	Views  map[string]ViewRate
-	Errors []string
+	Tables       map[string]float64
+	TableHistory map[string][5]uint64
+	Views        map[string]ViewRate
+	History      map[string]ViewHistory
+	Errors       []string
 }
 
 // LoadOverviewRates reads the same local-node, 60-second log window as LoadRates,
@@ -100,6 +102,16 @@ func LoadOverviewRates(ctx context.Context, dsn string, views []View) OverviewRa
 			out.Errors = append(out.Errors, "view log: "+err.Error())
 			break
 		}
+	}
+	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tableNames)
+	out.TableHistory = tableHistory
+	if tableHistoryErr != nil {
+		out.Errors = append(out.Errors, "part history: "+tableHistoryErr.Error())
+	}
+	history, historyErr := loadViewHistories(ctx, db, viewNames)
+	out.History = history
+	if historyErr != nil {
+		out.Errors = append(out.Errors, "view history: "+historyErr.Error())
 	}
 	return out
 }

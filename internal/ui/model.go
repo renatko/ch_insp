@@ -637,7 +637,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: 5 × 60s, oldest → newest · chart totals: 5m rows"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
@@ -712,7 +712,7 @@ func (m model) detailLines() []string {
 	} else {
 		lines = append(lines, accentStyle.Render("DATA FLOW"), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
 		lines = append(lines, diagramLines(view, m.rates, m.metricsReady)...)
-		lines = append(lines, "", mutedStyle.Render("Local logs: last 60s average; refresh ~5s; may be delayed."), mutedStyle.Render("No data may mean no events or logging disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: 5 × 60s and total rows."), mutedStyle.Render("Bars: oldest → newest, scaled independently; logs may be delayed or disabled."), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
 		if m.metricsReady {
 			for _, err := range m.rates.Errors {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))
@@ -755,24 +755,16 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 		sourceColumnWidth = maxInt(sourceColumnWidth, lipgloss.Width(rate(source)))
 	}
 	sourceColumnWidth = maxInt(sourceColumnWidth, sourceWidth+4)
-	mvMetric := "read/write: no data"
-	if !ready {
-		mvMetric = "read/write: loading"
-	} else if rates.MVAvailable {
-		mvMetric = fmt.Sprintf("read %.1f / write %.1f rows/s", rates.MVRead, rates.MVWritten)
-	}
+	mvMetric := mvRateText(ready, rates.MVAvailable, rates.MVRead, rates.MVWritten, rates.MVHistory)
 	mv := diagramBox("MATERIALIZED VIEW", view.Name, mvMetric, 0, 0, true, mvColor)
 	targetMV := "MV: no data"
-	targetTotal := "total: no data"
+	targetValue, targetAvailable := rates.Tables[flow.Target]
+	targetHistory, targetHistoryAvailable := rates.TableHistory[flow.Target]
+	targetTotal := totalRateText(ready, targetValue, targetAvailable, targetHistory, targetHistoryAvailable)
 	if !ready {
-		targetMV, targetTotal = "MV: loading", "total: loading"
-	} else {
-		if rates.MVAvailable {
-			targetMV = fmt.Sprintf("MV: %.1f rows/s", rates.MVWritten)
-		}
-		if value, ok := rates.Tables[flow.Target]; ok {
-			targetTotal = fmt.Sprintf("total: %.1f rows/s", value)
-		}
+		targetMV = "MV: loading"
+	} else if rates.MVAvailable {
+		targetMV = fmt.Sprintf("MV: %.1f rows/s", rates.MVWritten)
 	}
 	target := diagramBox("TARGET", shortName(flow.Target), targetMV+" · "+targetTotal, 0, 0, false, targetColor)
 	total := len(sources) * 5

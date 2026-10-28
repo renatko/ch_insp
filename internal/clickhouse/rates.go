@@ -11,8 +11,10 @@ import (
 // does not mean zero: logging may be disabled or delayed.
 type Rates struct {
 	Tables            map[string]float64
+	TableHistory      map[string][5]uint64
 	MVRead, MVWritten float64
 	MVAvailable       bool
+	MVHistory         *ViewHistory
 	Errors            []string
 }
 
@@ -73,6 +75,17 @@ func LoadRates(ctx context.Context, dsn string, view View) Rates {
 		rates.MVAvailable = true
 		rates.MVRead = float64(read) / 60
 		rates.MVWritten = float64(written) / 60
+	}
+	tableHistory, tableHistoryErr := loadTableHistories(ctx, db, tables)
+	rates.TableHistory = tableHistory
+	if tableHistoryErr != nil {
+		rates.Errors = append(rates.Errors, "part history: "+tableHistoryErr.Error())
+	}
+	history, historyErr := loadViewHistories(ctx, db, []string{view.Database + "." + view.Name})
+	if historyErr != nil {
+		rates.Errors = append(rates.Errors, "view history: "+historyErr.Error())
+	} else if value, ok := history[view.Database+"."+view.Name]; ok {
+		rates.MVHistory = &value
 	}
 	return rates
 }

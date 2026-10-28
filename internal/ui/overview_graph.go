@@ -61,12 +61,13 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 				stats = append(stats, stat+strings.Repeat(" ", width-lipgloss.Width(stat)))
 			}
 			inputs, inputStats := strings.Join(names, " + "), strings.Join(stats, "   ")
-			mvStats := "read/write: no data"
-			if !ready {
-				mvStats = "read/write: loading"
-			} else if rate, ok := rates.Views[view.Database+"."+view.Name]; ok {
-				mvStats = fmt.Sprintf("read %.1f / write %.1f rows/s", rate.Read, rate.Written)
+			key := view.Database + "." + view.Name
+			rate, available := rates.Views[key]
+			var history *clickhouse.ViewHistory
+			if value, ok := rates.History[key]; ok {
+				history = &value
 			}
+			mvStats := mvRateText(ready, available, rate.Read, rate.Written, history)
 			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
 			mvWidth = maxInt(mvWidth, maxInt(lipgloss.Width(view.Name), lipgloss.Width(mvStats)))
 			rows = append(rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats})
@@ -75,12 +76,9 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 			return value + strings.Repeat(" ", maxInt(0, width-lipgloss.Width(value)))
 		}
 		center := len(rows) / 2
-		total := "total: no data"
-		if !ready {
-			total = "total: loading"
-		} else if value, ok := rates.Tables[group.target]; ok {
-			total = fmt.Sprintf("total: %.1f rows/s", value)
-		}
+		value, available := rates.Tables[group.target]
+		history, hasHistory := rates.TableHistory[group.target]
+		total := totalRateText(ready, value, available, history, hasHistory)
 		for j, row := range rows {
 			positions[row.index] = len(lines)
 			rowStyle, statsStyle, markerStyle := groupStyle, mutedStyle, accentStyle
