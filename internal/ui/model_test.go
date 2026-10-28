@@ -178,3 +178,28 @@ func TestOverviewKeepsDistinctInternalTargets(t *testing.T) {
 		t.Fatal("internal targets must remain separate")
 	}
 }
+
+func TestOverviewColorsAreSharedAndStableAcrossFiltering(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "one", Definition: "CREATE MATERIALIZED VIEW one TO dst AS SELECT * FROM a"},
+		{Database: "db", Name: "two", Definition: "CREATE MATERIALIZED VIEW two TO dst AS SELECT * FROM b"},
+		{Database: "db", Name: "three", Definition: "CREATE MATERIALIZED VIEW three TO other AS SELECT * FROM a"},
+		{Database: "db", Name: "internal", Definition: "CREATE MATERIALIZED VIEW internal ENGINE = MergeTree ORDER BY x AS SELECT * FROM a"},
+	}
+	colors := overviewColors(views, "db")
+	first := overviewGroupKey(views[0], clickhouse.InferFlow(views[0]).Target)
+	second := overviewGroupKey(views[1], clickhouse.InferFlow(views[1]).Target)
+	third := overviewGroupKey(views[2], clickhouse.InferFlow(views[2]).Target)
+	if first != second || colors[first] == colors[third] {
+		t.Fatalf("unexpected group colors: %#v", colors)
+	}
+	m := model{database: "db", allViews: views, views: views[:1]}
+	before := overviewColors(m.allViews, m.database)[first]
+	m.views = views[1:3]
+	if after := overviewColors(m.allViews, m.database)[first]; before != after {
+		t.Fatal("filtering changed group color")
+	}
+	if len(colors) != 3 {
+		t.Fatalf("expected distinct group for internal storage: %#v", colors)
+	}
+}

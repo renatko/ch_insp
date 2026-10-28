@@ -43,7 +43,11 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			visible := maxInt(1, m.height-7)
 			start := minInt(m.overviewScroll, maxInt(0, len(lines)-visible))
 			line := start + msg.Y - 2
-			graph, _ := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected)
+			allViews := m.allViews
+			if allViews == nil {
+				allViews = m.views
+			}
+			graph, _ := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
 			if msg.Y >= 2 && msg.Y < 2+visible && line >= 4 && line < 4+len(graph) {
 				index, best := -1, -1
 				for i, position := range starts {

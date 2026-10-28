@@ -43,7 +43,9 @@ Press `o` to open a flow overview for every MV in the selected database. Views
 that write to the same target are grouped and connect to one target box. Inputs
 may be repeated for different views. Each input and MV shows its rates; the
 target shows its total rate and the selected MV's write rate when selection is
-in that group.
+in that group. Each target group has its own color, including its inputs and
+views. Colors remain stable when filtering; with more than eight groups the
+palette repeats, and refreshing after schema changes can reassign colors.
 Select an MV with `↑` / `↓` and press `Enter` to open its diagram. The
 overview supports horizontal and page scrolling. Metrics are queried in
 batches and have the same local-node and log-delay limits described above.

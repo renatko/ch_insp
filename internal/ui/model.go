@@ -470,11 +470,15 @@ func (m model) overviewLines() ([]string, []int) {
 	if m.filterSource != "" || m.filterTarget != "" {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Views sharing a target are grouped; inputs may repeat."), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("SQL-inferred inputs · local log averages over 60s · refresh ~5s"), mutedStyle.Render("Each target group has a color; inputs may repeat."), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
-	graph, positions := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected)
+	allViews := m.allViews
+	if allViews == nil {
+		allViews = m.views
+	}
+	graph, positions := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
 	for i := range positions {
 		positions[i] += len(header)
 	}
@@ -554,6 +558,10 @@ func diagramLines(view clickhouse.View, rates clickhouse.Rates, ready bool) []st
 }
 
 func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, includeTarget bool) ([]string, int) {
+	return diagramFlowLinesStyled(view, rates, ready, includeTarget, sourceStyle, viewStyle, targetStyle, mutedStyle)
+}
+
+func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready, includeTarget bool, sourceColor, mvColor, targetColor, lineColor lipgloss.Style) ([]string, int) {
 	flow := clickhouse.InferFlow(view)
 	sources := flow.Sources
 	if len(sources) == 0 {
@@ -582,7 +590,7 @@ func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, inclu
 	} else if rates.MVAvailable {
 		mvMetric = fmt.Sprintf("read %.1f / write %.1f rows/s", rates.MVRead, rates.MVWritten)
 	}
-	mv := diagramBox("MATERIALIZED VIEW", view.Name, mvMetric, 0, 0, true, viewStyle)
+	mv := diagramBox("MATERIALIZED VIEW", view.Name, mvMetric, 0, 0, true, mvColor)
 	targetMV := "MV: no data"
 	targetTotal := "total: no data"
 	if !ready {
@@ -595,13 +603,13 @@ func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, inclu
 			targetTotal = fmt.Sprintf("total: %.1f rows/s", value)
 		}
 	}
-	target := diagramBox("TARGET", shortName(flow.Target), targetMV+" · "+targetTotal, 0, 0, false, targetStyle)
+	target := diagramBox("TARGET", shortName(flow.Target), targetMV+" · "+targetTotal, 0, 0, false, targetColor)
 	total := len(sources) * 5
 	middle := (len(sources)/2)*5 + 2
 	top := middle - 2
 	lines := make([]string, total)
 	for row := 0; row < total; row++ {
-		box := diagramBox("QUERY INPUT", shortName(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceStyle)
+		box := diagramBox("QUERY INPUT", shortName(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceColor)
 		branch := "     "
 		if len(sources) == 1 && row == middle {
 			branch = "────▶"
@@ -624,7 +632,7 @@ func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, inclu
 				branch = "  │  "
 			}
 		}
-		line := box[row%5] + mutedStyle.Render(branch)
+		line := box[row%5] + lineColor.Render(branch)
 		if row >= top && row < top+5 {
 			connector := "     "
 			if row == middle {
@@ -632,7 +640,7 @@ func diagramFlowLines(view clickhouse.View, rates clickhouse.Rates, ready, inclu
 			}
 			line += mv[row-top]
 			if includeTarget {
-				line += mutedStyle.Render(connector) + target[row-top]
+				line += lineColor.Render(connector) + target[row-top]
 			}
 		}
 		lines[row] = line
