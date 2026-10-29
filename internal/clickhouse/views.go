@@ -21,6 +21,7 @@ type Catalog struct {
 	Databases       []string
 	CurrentDatabase string
 	Node            string
+	ServerVersion   string
 	Views           []View
 }
 
@@ -44,7 +45,7 @@ func loadCatalog(ctx context.Context, dsn string) (Catalog, error) {
 	if err := db.PingContext(ctx); err != nil {
 		return catalog, fmt.Errorf("connect to ClickHouse: %w", err)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT currentDatabase(), hostName()").Scan(&catalog.CurrentDatabase, &catalog.Node); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT currentDatabase(), hostName(), version()").Scan(&catalog.CurrentDatabase, &catalog.Node, &catalog.ServerVersion); err != nil {
 		return catalog, fmt.Errorf("read current database: %w", err)
 	}
 	dbRows, err := db.QueryContext(ctx, `SELECT name FROM system.databases WHERE name NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') ORDER BY name`)

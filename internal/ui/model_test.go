@@ -796,7 +796,7 @@ func TestChartPeriodAndSharedScale(t *testing.T) {
 }
 
 func TestNodeSwitchFailureKeepsCurrentConnection(t *testing.T) {
-	m := model{dsn: "clickhouse://u:secret@old:9000/db", width: 120, height: 25, nodeName: "old", views: []clickhouse.View{{Database: "db", Name: "mv"}}}
+	m := model{dsn: "clickhouse://u:secret@old:9000/db", width: 120, height: 25, nodeName: "old", nodeVersion: "24.1", views: []clickhouse.View{{Database: "db", Name: "mv"}}}
 	next, cmd := m.Update(mouseKey("n"))
 	m = next.(model)
 	if !m.choosingNode || !m.nodeLoading || cmd == nil {
@@ -811,8 +811,23 @@ func TestNodeSwitchFailureKeepsCurrentConnection(t *testing.T) {
 	}
 	next, _ = m.Update(nodeConnectedMsg{request: m.nodeRequest, err: fmt.Errorf("connection refused")})
 	m = next.(model)
-	if m.dsn != "clickhouse://u:secret@old:9000/db" || m.nodeName != "old" || m.nodeError == nil {
+	if m.dsn != "clickhouse://u:secret@old:9000/db" || m.nodeName != "old" || m.nodeVersion != "24.1" || m.nodeError == nil {
 		t.Fatal("failed switch changed connection")
+	}
+}
+
+func TestHeaderShowsServerVersionAfterConnectAndSwitch(t *testing.T) {
+	m := model{width: 120, height: 25}
+	next, _ := m.Update(viewsLoadedMsg{catalog: clickhouse.Catalog{Node: "first", ServerVersion: "24.1"}})
+	m = next.(model)
+	if !strings.Contains(ansi.Strip(m.View()), "node: first (24.1)") {
+		t.Fatalf("version missing from header: %s", m.View())
+	}
+	m.choosingNode, m.nodeRequest = true, 1
+	next, _ = m.Update(nodeConnectedMsg{request: 1, catalog: clickhouse.Catalog{Node: "second", ServerVersion: "25.2"}})
+	m = next.(model)
+	if !strings.Contains(ansi.Strip(m.View()), "node: second (25.2)") {
+		t.Fatalf("switched version missing: %s", m.View())
 	}
 }
 

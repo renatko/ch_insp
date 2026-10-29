@@ -179,6 +179,13 @@ func TestClusterMetricsFixtureIntegration(t *testing.T) {
 	if available != 2 || parts < 12 || reads != 6 || writes != 6 {
 		t.Fatalf("unexpected observed events: nodes=%d parts=%d read=%d write=%d", available, parts, reads, writes)
 	}
+	catalog, err := LoadCatalog(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog.Node != "ch1" || catalog.ServerVersion == "" {
+		t.Fatalf("missing server identity: %#v", catalog)
+	}
 	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		t.Fatal(RedactConnectionError(err, dsn))

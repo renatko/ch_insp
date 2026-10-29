@@ -45,6 +45,7 @@ type model struct {
 	databases                      []string
 	database                       string
 	nodeName                       string
+	nodeVersion                    string
 	choosingNode                   bool
 	nodeLoading                    bool
 	nodeError                      error
@@ -219,6 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.databases, m.allViews = msg.catalog.Databases, msg.catalog.Views
 			m.nodeName = msg.catalog.Node
+			m.nodeVersion = msg.catalog.ServerVersion
 			if !contains(m.databases, m.database) {
 				m.database = msg.catalog.CurrentDatabase
 				if !contains(m.databases, m.database) {
@@ -272,6 +274,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelColumns()
 			m.dsn = msg.dsn
 			m.nodeName = msg.catalog.Node
+			m.nodeVersion = msg.catalog.ServerVersion
 			m.databases = msg.catalog.Databases
 			m.allViews = msg.catalog.Views
 			if !contains(m.databases, m.database) {
@@ -887,7 +890,11 @@ func (m model) renderView() string {
 		b.WriteString(accentStyle.Render("  /  DB: " + m.database))
 	}
 	if m.nodeName != "" {
-		b.WriteString(mutedStyle.Render("  /  node: " + m.nodeName))
+		label := "  /  node: " + m.nodeName
+		if m.nodeVersion != "" {
+			label += " (" + m.nodeVersion + ")"
+		}
+		b.WriteString(mutedStyle.Render(label))
 	}
 	b.WriteString("\n\n")
 
