@@ -142,7 +142,7 @@ targets may therefore not be matched.
 
 Both system logs must be configured and readable by the user. View logging
 also requires `log_query_views` for the queries that execute the view. Diagnostics distinguish unsupported engines, unavailable metadata, log query errors and no observed events. No observed events still cannot distinguish inactivity from disabled, sampled or delayed logging. Errors appear below the diagram. Metrics
-cover the connected server only, not the entire cluster or replicas.
+in the diagrams cover the connected server only; the separate node survey reports its cluster coverage explicitly.
 
 ## Read-only cluster test
 
