@@ -101,11 +101,70 @@ func (m model) selectedNodeSurvey() *clickhouse.NodeSurvey {
 	return nil
 }
 func (m model) nodeListVisible() int {
+	width := m.width
+	if width <= 0 {
+		width = 80
+	}
 	reserved := 13
-	if m.nodeSurvey != nil && m.nodeSurvey.Database != "" {
-		reserved += 3
+	if m.nodeSurvey != nil {
+		reserved = 12 + len(m.nodeSurveyLines(width))
+	}
+	if m.nodeError != nil {
+		reserved++
 	}
 	return maxInt(1, m.height-reserved)
+}
+
+func (m model) nodeSurveyLines(width int) []string {
+	if m.nodeSurvey == nil {
+		return nil
+	}
+	survey := m.nodeSurvey
+	suffix := ""
+	if survey.Truncated {
+		suffix = " · limited to 64"
+	}
+	responded := 0
+	for _, result := range survey.Nodes {
+		if result.Server != "" {
+			responded++
+		}
+	}
+	lines := []string{fmt.Sprintf("Survey %s: %d/%d nodes responded%s · e: details", survey.Cluster, responded, survey.Total, suffix)}
+	if survey.Database != "" {
+		var parts, reads, writes uint64
+		partNodes, viewNodes := 0, 0
+		seen := map[string]bool{}
+		for _, result := range survey.Nodes {
+			key := fmt.Sprintf("%s:%d", result.Node.Host, result.Node.Port)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			if result.Error != "" {
+				continue
+			}
+			if result.PartLogError == "" {
+				parts += result.PartRows
+				partNodes++
+			}
+			if result.ViewLogError == "" {
+				reads += result.ViewReadRows
+				writes += result.ViewWrittenRows
+				viewNodes++
+			}
+		}
+		lines = append(lines, fmt.Sprintf("%s · observed rows / 60s · node events, not logical totals", survey.Database))
+		lines = append(lines, fmt.Sprintf("NewPart: %d (%d/%d nodes) · MV read: %d / write: %d (%d/%d nodes)", parts, partNodes, survey.Total, reads, writes, viewNodes, survey.Total))
+		if partNodes != survey.Total || viewNodes != survey.Total {
+			lines = append(lines, "Partial: missing, duplicate, or unchecked nodes/logs")
+		}
+	}
+	var result []string
+	for _, line := range lines {
+		result = append(result, strings.Split(ansi.Hardwrap(line, maxInt(1, width), true), "\n")...)
+	}
+	return result
 }
 func (m model) renderNodes(width int) string {
 	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render("Direct connections · v: survey selected cluster"), ""}
@@ -151,46 +210,11 @@ func (m model) renderNodes(width int) string {
 			lines = append(lines, line)
 		}
 	}
-	if m.nodeSurvey != nil {
-		suffix := ""
-		if m.nodeSurvey.Truncated {
-			suffix = " · limited to 64"
-		}
-		responded := 0
-		for _, result := range m.nodeSurvey.Nodes {
-			if result.Server != "" {
-				responded++
-			}
-		}
-		lines = append(lines, mutedStyle.Render(fmt.Sprintf("Survey %s: %d/%d nodes responded%s · e: details", m.nodeSurvey.Cluster, responded, m.nodeSurvey.Total, suffix)))
-		if m.nodeSurvey.Database != "" {
-			var parts, reads, writes uint64
-			partNodes, viewNodes := 0, 0
-			seen := map[string]bool{}
-			for _, result := range m.nodeSurvey.Nodes {
-				key := fmt.Sprintf("%s:%d", result.Node.Host, result.Node.Port)
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				if result.Error != "" {
-					continue
-				}
-				if result.PartLogError == "" {
-					parts += result.PartRows
-					partNodes++
-				}
-				if result.ViewLogError == "" {
-					reads += result.ViewReadRows
-					writes += result.ViewWrittenRows
-					viewNodes++
-				}
-			}
-			lines = append(lines, mutedStyle.Render(fmt.Sprintf("%s · observed rows / 60s · node events, not logical totals", m.nodeSurvey.Database)))
-			lines = append(lines, mutedStyle.Render(fmt.Sprintf("NewPart: %d (%d/%d nodes) · MV read: %d / write: %d (%d/%d nodes)", parts, partNodes, m.nodeSurvey.Total, reads, writes, viewNodes, m.nodeSurvey.Total)))
-			if partNodes != m.nodeSurvey.Total || viewNodes != m.nodeSurvey.Total {
-				lines = append(lines, errorStyle.Render("Partial: missing, duplicate, or unchecked nodes/logs"))
-			}
+	for _, line := range m.nodeSurveyLines(width) {
+		if strings.HasPrefix(line, "Partial:") {
+			lines = append(lines, errorStyle.Render(line))
+		} else {
+			lines = append(lines, mutedStyle.Render(line))
 		}
 	}
 	return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ select  [v] survey cluster  [e] details  [enter] connect  [esc] back")), "\n")

@@ -824,6 +824,24 @@ func TestClusterSurveyMetricsShowPartialCoverage(t *testing.T) {
 	}
 }
 
+func TestClusterSurveyWrapsNarrowSummaryAndReservesSpace(t *testing.T) {
+	node := clickhouse.Node{Cluster: "cluster", Host: "node", Port: 9000}
+	survey := clickhouse.ClusterSurvey{Cluster: "cluster", Database: "database", Total: 2, Nodes: []clickhouse.NodeSurvey{{Node: node, Server: "node", PartRows: 10, ViewReadRows: 4, ViewWrittenRows: 3}}}
+	m := model{width: 30, height: 28, nodes: []clickhouse.Node{node}, nodeSurvey: &survey}
+	lines := m.nodeSurveyLines(m.width)
+	for _, line := range lines {
+		if ansi.StringWidth(line) > m.width {
+			t.Fatalf("summary line exceeds width: %q", line)
+		}
+	}
+	if len(lines) <= 4 || m.nodeListVisible() != maxInt(1, m.height-12-len(lines)) {
+		t.Fatalf("wrapped summary not reflected in list height: %d lines, %d visible", len(lines), m.nodeListVisible())
+	}
+	if !strings.Contains(strings.Join(lines, " "), "Partial:") {
+		t.Fatal("partial result is not visible")
+	}
+}
+
 func TestErrorWindowSwitchReloadsAndRejectsStale(t *testing.T) {
 	m := model{width: 120, height: 25, database: "db", views: []clickhouse.View{{Database: "db", Name: "mv"}}, failuresMode: true}
 	old := m.loadFailures()
