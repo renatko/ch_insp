@@ -50,6 +50,55 @@ func TestClusterSurveyCancelledBeforeProbes(t *testing.T) {
 	}
 }
 
+func TestClusterSurveyCancellationStopsQueuedProbes(t *testing.T) {
+	nodes := make([]Node, 12)
+	for i := range nodes {
+		nodes[i] = Node{Cluster: "c", Host: "node", Replica: uint32(i + 1)}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{}, 12)
+	done := make(chan ClusterSurvey, 1)
+	go func() {
+		done <- surveyCluster(ctx, "dsn", nodes, "c", func(ctx context.Context, _ string, n Node) NodeSurvey {
+			started <- struct{}{}
+			<-ctx.Done()
+			return NodeSurvey{Node: n, Error: ctx.Err().Error()}
+		})
+	}()
+	for i := 0; i < 4; i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("four workers did not start")
+		}
+	}
+	select {
+	case <-started:
+		t.Fatal("more than four probes ran concurrently")
+	default:
+	}
+	cancel()
+	select {
+	case result := <-done:
+		if len(result.Nodes) != len(nodes) || result.Total != len(nodes) {
+			t.Fatalf("lost configured nodes after cancellation: %#v", result)
+		}
+		for _, node := range result.Nodes {
+			if node.Error == "" {
+				t.Fatalf("cancelled or unchecked node has no error: %#v", node)
+			}
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("survey did not return after cancellation")
+	}
+	select {
+	case <-started:
+		t.Fatal("a queued probe started after cancellation")
+	default:
+	}
+}
+
 // This opt-in integration check only reads system tables. It requires a
 // disposable cluster explicitly selected by the operator; ordinary tests do
 // not access external servers.
