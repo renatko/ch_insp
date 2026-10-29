@@ -4,8 +4,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY main.go ./
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -o /chinspector .
+RUN CGO_ENABLED=0 go build -o /ch_insp .
 
 FROM scratch
-COPY --from=build /chinspector /chinspector
-ENTRYPOINT ["/chinspector"]
+COPY --from=build /ch_insp /ch_insp
+ENTRYPOINT ["/ch_insp"]

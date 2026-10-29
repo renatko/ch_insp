@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 )
 
 func compactMetricLabel(label string) string {

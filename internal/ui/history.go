@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 )
 
 // Each chart has its own scale.

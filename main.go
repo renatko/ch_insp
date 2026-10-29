@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"chinspector/internal/config"
-	"chinspector/internal/ui"
+	"ch_insp/internal/config"
+	"ch_insp/internal/ui"
 )
 
 func main() {

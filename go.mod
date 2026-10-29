@@ -1,4 +1,4 @@
-module chinspector
+module ch_insp
 
 go 1.20
 

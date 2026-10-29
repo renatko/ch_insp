@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 )
 
 type filterOption struct{ value, label string }

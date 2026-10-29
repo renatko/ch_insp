@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 )
 
 type viewsLoadedMsg struct {
@@ -884,7 +884,7 @@ func (m model) renderView() string {
 		width = 80
 	}
 
-	b.WriteString(accentStyle.Render("CHINSPECTOR"))
+	b.WriteString(accentStyle.Render("ch_insp"))
 	b.WriteString(mutedStyle.Render("  /  ClickHouse materialized views"))
 	if m.database != "" {
 		b.WriteString(accentStyle.Render("  /  DB: " + m.database))

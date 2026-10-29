@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
 	"strings"
 	"testing"

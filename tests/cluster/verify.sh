@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates and removes only a uniquely named disposable Docker Compose project.
-# It writes synthetic data inside that project; chinspector itself remains read-only.
+# It writes synthetic data inside that project; ch_insp itself remains read-only.
 set -euo pipefail
 
 fixture_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

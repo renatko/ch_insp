@@ -13,7 +13,7 @@ import (
 
 // Parse returns the connection URL. Explicit flags override CLICKHOUSE_URL.
 func Parse(args []string, envURL string, output io.Writer) (string, error) {
-	fs := flag.NewFlagSet("chinspector", flag.ContinueOnError)
+	fs := flag.NewFlagSet("ch_insp", flag.ContinueOnError)
 	fs.SetOutput(output)
 	dsn := fs.String("url", "", "ClickHouse connection URL (default: CLICKHOUSE_URL)")
 	host := fs.String("host", "", "ClickHouse host (default: localhost)")
@@ -22,7 +22,7 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 	password := fs.String("password", "", "ClickHouse password (may be visible in process arguments)")
 	database := fs.String("database", "", "initial database (default: default)")
 	secure := fs.Bool("secure", false, "use TLS for the connection")
-	fs.Usage = func() { fmt.Fprintln(output, "Usage: chinspector [options]"); fs.PrintDefaults() }
+	fs.Usage = func() { fmt.Fprintln(output, "Usage: ch_insp [options]"); fs.PrintDefaults() }
 	if err := fs.Parse(args); err != nil {
 		return "", err
 	}

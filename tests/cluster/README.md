@@ -1,6 +1,6 @@
 # Disposable replica fixture
 
-This fixture is for validating cluster metric semantics before enabling any cluster-wide aggregation in chinspector. It starts two ClickHouse servers in one shard with two replicas and an embedded single-node Keeper. It is intentionally a disposable test setup, not a production configuration.
+This fixture is for validating cluster metric semantics before enabling any cluster-wide aggregation in ch_insp. It starts two ClickHouse servers in one shard with two replicas and an embedded single-node Keeper. It is intentionally a disposable test setup, not a production configuration.
 
 Run it only where Docker Compose can start containers and pull the ClickHouse image:
 

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

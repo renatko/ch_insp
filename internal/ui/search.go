@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"chinspector/internal/clickhouse"
+	"ch_insp/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )

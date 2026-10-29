@@ -1,4 +1,4 @@
-# chinspector
+# ch_insp
 
 Terminal UI for inspecting ClickHouse materialized views and their definitions.
 
@@ -35,6 +35,8 @@ Verify the running demo, including data and MV log events:
 Stop and remove only the demo containers and network with `docker compose -f demo/compose.yaml down`. Demo data lives in container storage and is discarded when the containers are removed. Ports can be changed with `DEMO_STANDALONE_PORT`, `DEMO_REPLICA1_PORT` and `DEMO_REPLICA2_PORT`; internal cluster addresses do not change.
 
 ## Run
+
+Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
 
 Set a ClickHouse DSN in `CLICKHOUSE_URL`, then start the TUI:
 
