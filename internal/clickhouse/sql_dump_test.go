@@ -79,3 +79,21 @@ func TestSQLDumpAllowsSchemaWithoutViews(t *testing.T) {
 		t.Fatalf("empty schema: %#v %v", dump, err)
 	}
 }
+
+func TestDemoSchemaDump(t *testing.T) {
+	dump, err := LoadSQLDump("../../demo/schema.sql", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dump.Warnings) != 0 {
+		t.Fatalf("demo dump warnings: %v", dump.Warnings)
+	}
+	if len(dump.Catalog.Views) != 16 || len(dump.columns) != 14 {
+		t.Fatalf("unexpected demo schema: %d views, %d tables", len(dump.Catalog.Views), len(dump.columns))
+	}
+	for _, view := range dump.Catalog.Views {
+		if _, err := dump.ColumnLineage(view); err != nil {
+			t.Errorf("%s: %v", view.Name, err)
+		}
+	}
+}
