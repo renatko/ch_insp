@@ -68,10 +68,26 @@ func RedactConnectionError(err error, dsn string) error {
 		return nil
 	}
 	message := strings.ReplaceAll(err.Error(), dsn, "[connection]")
-	if u, parseErr := url.Parse(dsn); parseErr == nil && u.User != nil {
-		if password, ok := u.User.Password(); ok && password != "" {
+	if u, parseErr := url.Parse(dsn); parseErr == nil {
+		var passwords []string
+		if u.User != nil {
+			if password, ok := u.User.Password(); ok {
+				passwords = append(passwords, password)
+			}
+		}
+		for key, values := range u.Query() {
+			if strings.EqualFold(key, "password") {
+				passwords = append(passwords, values...)
+			}
+		}
+		for _, password := range passwords {
+			if password == "" {
+				continue
+			}
 			message = strings.ReplaceAll(message, password, "[redacted]")
 			message = strings.ReplaceAll(message, url.QueryEscape(password), "[redacted]")
+			message = strings.ReplaceAll(message, strings.ReplaceAll(url.QueryEscape(password), "+", "%20"), "[redacted]")
+			message = strings.ReplaceAll(message, url.PathEscape(password), "[redacted]")
 		}
 	}
 	if message == err.Error() {

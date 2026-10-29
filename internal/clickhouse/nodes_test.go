@@ -33,6 +33,19 @@ func TestNodeConnectionErrorRedactsCredentials(t *testing.T) {
 	}
 }
 
+func TestNodeConnectionErrorRedactsQueryPassword(t *testing.T) {
+	dsn := "clickhouse://user@host:9000/db?password=p%40ss+word&secure=true"
+	err := RedactConnectionError(fmt.Errorf("server rejected password p@ss word (p%%40ss+word, p%%40ss%%20word)"), dsn)
+	for _, secret := range []string{"p@ss word", "p%40ss+word", "p%40ss%20word"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("password leaked: %s", err)
+		}
+	}
+	if !strings.Contains(err.Error(), "server rejected password") {
+		t.Fatal("error context lost")
+	}
+}
+
 func TestPublicReadPathsDoNotExposeConnectionPassword(t *testing.T) {
 	dsn := "clickhouse://user:secret@bad%xx:9000/db"
 	ctx := context.Background()
