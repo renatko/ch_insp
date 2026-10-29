@@ -102,10 +102,7 @@ func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []V
 				out.TableDiagnostics[name] = d
 			}
 		}
-		rows, err := db.QueryContext(ctx, `SELECT database, table, sum(rows) FROM system.part_log
-			WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND
-			AND event_type = 'NewPart' AND error = 0 AND concat(database, '.', table) IN (`+marks+`)
-			GROUP BY database, table`, args...)
+		rows, err := db.QueryContext(ctx, tableRateQuery(marks), args...)
 		if err != nil {
 			out.Errors = append(out.Errors, "part log: "+err.Error())
 			for _, name := range tableNames[start:end] {
@@ -153,10 +150,7 @@ func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []V
 		for _, name := range viewNames[start:end] {
 			out.ViewDiagnostics[name] = MetricDiagnostic{State: MetricNoEvents}
 		}
-		rows, err := db.QueryContext(ctx, `SELECT view_name, sum(read_rows), sum(written_rows) FROM system.query_views_log
-			WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND
-			AND view_type = 'Materialized' AND status = 'QueryFinish' AND view_name IN (`+marks+`)
-			GROUP BY view_name`, args...)
+		rows, err := db.QueryContext(ctx, viewRateQuery(marks), args...)
 		if err != nil {
 			out.Errors = append(out.Errors, "view log: "+err.Error())
 			for _, name := range viewNames[start:end] {
@@ -214,6 +208,20 @@ func collectOverviewRates(ctx context.Context, db *sql.DB, dsn string, views []V
 		}
 	}
 	return out
+}
+
+func tableRateQuery(marks string) string {
+	return `SELECT database, table, sum(rows) FROM system.part_log
+		WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND AND event_time <= now()
+		AND event_type = 'NewPart' AND error = 0 AND concat(database, '.', table) IN (` + marks + `)
+		GROUP BY database, table`
+}
+
+func viewRateQuery(marks string) string {
+	return `SELECT view_name, sum(read_rows), sum(written_rows) FROM system.query_views_log
+		WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND AND event_time <= now()
+		AND view_type = 'Materialized' AND status = 'QueryFinish' AND view_name IN (` + marks + `)
+		GROUP BY view_name`
 }
 
 func queryArgs(names []string) ([]any, string) {
