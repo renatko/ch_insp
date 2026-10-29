@@ -130,7 +130,7 @@ func (m model) nodeSurveyLines(width int) []string {
 			responded++
 		}
 	}
-	lines := []string{fmt.Sprintf("Survey %s: %d/%d nodes responded%s · e: details", survey.Cluster, responded, survey.Total, suffix)}
+	lines := []string{fmt.Sprintf("Survey %s: %d/%d nodes responded%s · [e] details", survey.Cluster, responded, survey.Total, suffix)}
 	if survey.Database != "" {
 		var parts, reads, writes uint64
 		partNodes, viewNodes := 0, 0
@@ -167,7 +167,7 @@ func (m model) nodeSurveyLines(width int) []string {
 	return result
 }
 func (m model) renderNodes(width int) string {
-	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render("Direct connections · v: survey selected cluster"), ""}
+	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render("Direct connections · [v] survey selected cluster"), ""}
 	if m.nodeDetails {
 		details := m.selectedNodeSurvey()
 		if details == nil {
@@ -178,7 +178,7 @@ func (m model) renderNodes(width int) string {
 		start := minInt(m.nodeDetailsOffset, maxInt(0, len(all)-visible))
 		end := minInt(len(all), start+visible)
 		lines = append(lines, all[start:end]...)
-		return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ or PgUp/PgDn scroll  [esc] back")), "\n")
+		return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] or [PgUp]/[PgDn] scroll  [esc] back")), "\n")
 	}
 	if m.nodeLoading {
 		lines = append(lines, mutedStyle.Render("Loading, connecting or surveying…"))
@@ -217,7 +217,7 @@ func (m model) renderNodes(width int) string {
 			lines = append(lines, mutedStyle.Render(line))
 		}
 	}
-	return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ select  [v] survey cluster  [e] details  [enter] connect  [esc] back")), "\n")
+	return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] select  [v] survey cluster  [e] details  [enter] connect  [esc] back")), "\n")
 }
 func detailOrOK(s string) string {
 	if s == "" {

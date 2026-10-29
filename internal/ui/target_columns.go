@@ -85,7 +85,7 @@ func (m model) targetColumnWindow() (int, int) {
 }
 
 func (m model) targetLines() []string {
-	lines := []string{accentStyle.Render("TARGET TABLE"), mutedStyle.Render("Potential MV outputs · matched by column name · t: back"), ""}
+	lines := []string{accentStyle.Render("TARGET TABLE"), mutedStyle.Render("Potential MV outputs · matched by column name · [t] back"), ""}
 	if m.targetLoading {
 		return append(lines, mutedStyle.Render("Loading target columns and materialized views…"))
 	}
@@ -168,6 +168,6 @@ func (m model) targetLines() []string {
 	for _, warning := range data.Warnings {
 		lines = append(lines, errorStyle.Render("! "+warning))
 	}
-	lines = append(lines, "", mutedStyle.Render("↑/↓: select column · PgUp/PgDn: scroll details"), mutedStyle.Render("Visible MV definitions only; direct inserts and hidden views are not included."))
+	lines = append(lines, "", mutedStyle.Render("[↑]/[↓] select column · [PgUp]/[PgDn] scroll details"), mutedStyle.Render("Visible MV definitions only; direct inserts and hidden views are not included."))
 	return lines
 }

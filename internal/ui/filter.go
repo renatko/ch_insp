@@ -260,6 +260,6 @@ func (m model) renderFilter(width int) string {
 			lines = append(lines, line)
 		}
 	}
-	lines = append(lines, "", mutedStyle.Render(ansi.Truncate("Tab switch · ↑/↓ move · Space toggle", maxInt(1, width), "…")), mutedStyle.Render(ansi.Truncate("[enter] apply  [ctrl+x] clear filters  [esc] cancel", maxInt(1, width), "…")))
+	lines = append(lines, "", mutedStyle.Render(ansi.Truncate("[tab] switch · [↑]/[↓] move · [space] toggle", maxInt(1, width), "…")), mutedStyle.Render(ansi.Truncate("[enter] apply  [ctrl+x] clear filters  [esc] cancel", maxInt(1, width), "…")))
 	return strings.Join(lines, "\n")
 }

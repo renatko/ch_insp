@@ -71,7 +71,7 @@ func (m *model) loadFailures() tea.Cmd {
 	}
 }
 func (m model) failureLines() []string {
-	lines := []string{accentStyle.Render("MV ERRORS · " + m.views[m.selected].Name), mutedStyle.Render("Last " + m.statusWindowLabel() + " · local node · up to 50 events · w: window · e/esc: back"), ""}
+	lines := []string{accentStyle.Render("MV ERRORS · " + m.views[m.selected].Name), mutedStyle.Render("Last " + m.statusWindowLabel() + " · local node · up to 50 events · [w] window · [e]/[esc] back"), ""}
 	if m.failuresLoading {
 		return append(lines, mutedStyle.Render("Loading errors…"))
 	}
@@ -85,7 +85,7 @@ func (m model) failureLines() []string {
 		f := m.failures[m.failureSelected]
 		lines = append(lines, fmt.Sprintf("%s  %s  code %d", f.Time.Format("2006-01-02 15:04:05"), f.Status, f.Code), "Query ID: "+f.QueryID, "", "Message:")
 		lines = append(lines, strings.Split(f.Message, "\n")...)
-		return append(lines, "", mutedStyle.Render("Enter/Esc: list · PgUp/PgDn: scroll"))
+		return append(lines, "", mutedStyle.Render("[enter]/[esc] list · [PgUp]/[PgDn] scroll"))
 	}
 	for i, f := range m.failures {
 		message := strings.ReplaceAll(strings.ReplaceAll(f.Message, "\n", " "), "\r", " ")
@@ -100,5 +100,5 @@ func (m model) failureLines() []string {
 			lines = append(lines, line)
 		}
 	}
-	return append(lines, "", mutedStyle.Render("↑/↓: select · Enter: full message"))
+	return append(lines, "", mutedStyle.Render("[↑]/[↓] select · [enter] full message"))
 }

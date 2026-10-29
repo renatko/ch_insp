@@ -1016,7 +1016,7 @@ func (m model) renderView() string {
 			}
 			b.WriteString("\n")
 		}
-		b.WriteString("\n" + mutedStyle.Render("↑/↓ select  [enter] switch  [esc] cancel  [q] quit"))
+		b.WriteString("\n" + mutedStyle.Render("[↑]/[↓] select  [enter] switch  [esc] cancel  [q] quit"))
 		return b.String()
 	}
 	if m.overview {
@@ -1049,7 +1049,7 @@ func (m model) renderView() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  ↑/↓ select  ←/→ scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  [↑]/[↓] select  [←]/[→] scroll", width, "…")))
 	return b.String()
 }
 
@@ -1098,7 +1098,7 @@ func (m model) overviewLines() ([]string, []int) {
 			warnings = len(m.dump.Warnings)
 		}
 		header[1] = mutedStyle.Render(fmt.Sprintf("OFFLINE SQL · rates and execution status unavailable · %d import warnings", warnings))
-		header[2] = mutedStyle.Render("[T] inferred trigger · [I] other input · r: reload dump")
+		header[2] = mutedStyle.Render("[T] inferred trigger · [I] other input · [r] reload dump")
 	}
 	if len(m.views) == 0 {
 		header = append(header, mutedStyle.Render("No matching materialized views."))
@@ -1230,7 +1230,7 @@ func (m model) detailLines() []string {
 			if m.schemaPath != "" {
 				status = "execution status: offline"
 			}
-			lines = append(lines, "", mutedStyle.Render(status), mutedStyle.Render("e: MV errors"))
+			lines = append(lines, "", mutedStyle.Render(status), mutedStyle.Render("[e] MV errors"))
 			if m.rates.StatusError != "" {
 				lines = append(lines, errorStyle.Render("Status: "+m.rates.StatusError))
 			}
@@ -1245,7 +1245,7 @@ func (m model) detailLines() []string {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))
 			}
 		}
-		lines = append(lines, mutedStyle.Render("d: SQL definition · ←/→: scroll diagram"))
+		lines = append(lines, mutedStyle.Render("[d] SQL definition · [←]/[→] scroll diagram"))
 	}
 	return lines
 }

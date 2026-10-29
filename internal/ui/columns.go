@@ -6,16 +6,16 @@ import (
 )
 
 func (m model) columnLines() []string {
-	source := "Static SQL analysis + system.columns · c: back to diagram"
+	source := "Static SQL analysis + system.columns · [c] back to diagram"
 	if m.schemaPath != "" {
-		source = "Static SQL analysis + dump columns · offline · c: back to diagram"
+		source = "Static SQL analysis + dump columns · offline · [c] back to diagram"
 	}
 	lines := []string{accentStyle.Render("COLUMN FLOW"), mutedStyle.Render(source), ""}
 	if m.columnsLoading {
 		return append(lines, mutedStyle.Render("Loading column metadata…"))
 	}
 	if m.columnsError != nil {
-		return append(lines, errorStyle.Render("Cannot analyze view: "+m.columnsError.Error()), mutedStyle.Render("Press d to inspect the original SQL."))
+		return append(lines, errorStyle.Render("Cannot analyze view: "+m.columnsError.Error()), mutedStyle.Render("Press [d] to inspect the original SQL."))
 	}
 	for _, warning := range m.columnsData.Warnings {
 		lines = append(lines, errorStyle.Render("! "+warning))

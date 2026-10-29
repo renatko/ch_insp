@@ -148,6 +148,6 @@ func (m model) renderSearch(width int) string {
 	if len(results) == 0 {
 		lines = append(lines, mutedStyle.Render("No matches."))
 	}
-	lines = append(lines, "", mutedStyle.Render("↑/↓ select  [enter] jump  [esc] cancel"))
+	lines = append(lines, "", mutedStyle.Render("[↑]/[↓] select  [enter] jump  [esc] cancel"))
 	return strings.Join(lines, "\n")
 }

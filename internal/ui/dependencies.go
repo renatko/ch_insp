@@ -64,7 +64,7 @@ func (m model) dependencyLines() []string {
 		}
 		lines = append(lines, line)
 	}
-	return append(lines, "", mutedStyle.Render("↑/↓ select · Enter open · t: columns · Backspace previous · g/esc back"))
+	return append(lines, "", mutedStyle.Render("[↑]/[↓] select · [enter] open · [t] columns · [backspace] previous · [g]/[esc] back"))
 }
 func (m *model) openDependencies() {
 	if len(m.views) == 0 {
@@ -272,5 +272,5 @@ func (m model) renderDependencyPicker(width int) string {
 		}
 		lines = append(lines, line)
 	}
-	return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ select  [enter] open  [esc] cancel")), "\n")
+	return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] select  [enter] open  [esc] cancel")), "\n")
 }
