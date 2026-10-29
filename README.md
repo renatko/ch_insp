@@ -4,7 +4,7 @@ Terminal UI for inspecting ClickHouse materialized views and their definitions.
 
 ## Docker demo
 
-The demo starts a standalone ClickHouse server and a separate one-shard, two-replica cluster, using the pinned ClickHouse **26.8.36.3 LTS** image. A traffic generator continuously inserts synthetic events into both environments. Docker Compose and access to the container images are required.
+The demo starts a standalone ClickHouse server and a separate one-shard, two-replica cluster, using the pinned ClickHouse **26.8.36.3 LTS** image. A traffic generator continuously inserts synthetic events into both environments, varying the number of inserts, rows per insert and intervals between them. Docker Compose and access to the container images are required.
 
 ```sh
 docker compose -f demo/compose.yaml up -d --wait
