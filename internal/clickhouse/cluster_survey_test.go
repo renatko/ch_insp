@@ -2,6 +2,7 @@ package clickhouse
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"strings"
@@ -177,5 +178,27 @@ func TestClusterMetricsFixtureIntegration(t *testing.T) {
 	}
 	if available != 2 || parts < 12 || reads != 6 || writes != 6 {
 		t.Fatalf("unexpected observed events: nodes=%d parts=%d read=%d write=%d", available, parts, reads, writes)
+	}
+	db, err := sql.Open("clickhouse", dsn)
+	if err != nil {
+		t.Fatal(RedactConnectionError(err, dsn))
+	}
+	defer db.Close()
+	statuses, err := loadViewStatuses(ctx, db, []string{"flow_test.mv", "flow_test.bad_mv", "flow_test.missing"}, dsn, 24)
+	if err != nil {
+		t.Fatal(RedactConnectionError(err, dsn))
+	}
+	if statuses["flow_test.mv"].Successes == 0 || statuses["flow_test.bad_mv"].Errors != 1 || statuses["flow_test.bad_mv"].Successes != 0 {
+		t.Fatalf("incorrect local MV statuses: %#v", statuses)
+	}
+	if _, ok := statuses["flow_test.missing"]; ok {
+		t.Fatal("missing events reported as an observed status")
+	}
+	failures, err := LoadViewFailures(ctx, dsn, View{Database: "flow_test", Name: "bad_mv"}, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 1 || failures[0].Status != "ExceptionWhileProcessing" || failures[0].Code == 0 || failures[0].Message == "" || failures[0].QueryID != "chinspector_fixture_failure" {
+		t.Fatalf("incorrect MV failure detail: %#v", failures)
 	}
 }
