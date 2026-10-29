@@ -4,12 +4,88 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"chinspector/internal/clickhouse"
 )
+
+func compactMetricLabel(label string) string {
+	if label == "no events observed" {
+		return "no events"
+	}
+	return label
+}
+
+func compactMVRate(ready, available bool, rate clickhouse.ViewRate, history *clickhouse.ViewHistory, diagnostic clickhouse.MetricDiagnostic, readMax, writeMax uint64) string {
+	if !ready {
+		return mutedStyle.Render("R/W loading")
+	}
+	read, write := "R", "W"
+	if history != nil {
+		read += " " + historyBarScaled(history.Read, history.Events, readMax)
+		write += " " + historyBarScaled(history.Written, history.Events, writeMax)
+	}
+	if available {
+		read += fmt.Sprintf(" %.1f", rate.Read)
+		write += fmt.Sprintf(" %.1f", rate.Written)
+		return readMetricStyle.Render(read) + " / " + writeMetricStyle.Render(write)
+	}
+	label := compactMetricLabel(metricStateLabel(diagnostic))
+	if label == "" {
+		label = "no data"
+	}
+	if history == nil {
+		return mutedStyle.Render("R/W " + label)
+	}
+	return readMetricStyle.Render(read) + " / " + writeMetricStyle.Render(write) + " · " + mutedStyle.Render(label)
+}
+
+func compactTotalRate(ready bool, value float64, available bool, history clickhouse.TableHistory, hasHistory bool, max uint64, diagnostic clickhouse.MetricDiagnostic) string {
+	if !ready {
+		return writeMetricStyle.Render("total: loading")
+	}
+	text := "total:"
+	if hasHistory {
+		text += " " + historyBarScaled(history.Rows, history.Events, max)
+	}
+	if available {
+		text += fmt.Sprintf(" %.1f", value)
+	} else {
+		label := compactMetricLabel(metricStateLabel(diagnostic))
+		if label == "" {
+			label = "no data"
+		}
+		text += " " + label
+	}
+	return writeMetricStyle.Render(text)
+}
+
+func compactStatusText(status *clickhouse.ViewStatus, err string, now time.Time) string {
+	if err != "" {
+		return "status unavailable"
+	}
+	if status == nil || (status.Successes == 0 && status.Errors == 0) {
+		return "status ?"
+	}
+	last := "no ok"
+	if status.Successes > 0 {
+		age := now.Sub(status.LastSuccess)
+		switch {
+		case age < 0:
+			last = "ok future"
+		case age < time.Hour:
+			last = fmt.Sprintf("ok %dm", int(age.Minutes()))
+		case age < 24*time.Hour:
+			last = fmt.Sprintf("ok %dh", int(age.Hours()))
+		default:
+			last = fmt.Sprintf("ok %dd", int(age.Hours()/24))
+		}
+	}
+	return fmt.Sprintf("%s · err %d", last, status.Errors)
+}
 
 // overviewGraph groups views by target and draws each target only once.
 func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color) ([]string, []int) {
@@ -59,18 +135,18 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				name := shortName(source)
 				if flow.Trigger != "" {
 					if source == flow.Trigger {
-						name += " [trigger]"
+						name += " [T]"
 					} else {
-						name += " [input]"
+						name += " [I]"
 					}
 				}
 				stat := "inserted: no data"
 				if !ready {
 					stat = "inserted: loading"
 				} else if value, ok := rates.Tables[source]; ok {
-					stat = fmt.Sprintf("inserted: %.1f rows/s", value)
+					stat = fmt.Sprintf("inserted: %.1f", value)
 				} else if label := metricStateLabel(rates.TableDiagnostics[source]); label != "" {
-					stat = "inserted: " + label
+					stat = "inserted: " + compactMetricLabel(label)
 				}
 				stat = readMetricStyle.Render(stat)
 				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))
@@ -84,21 +160,16 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			if value, ok := rates.History[key]; ok {
 				history = &value
 			}
-			mvStats := mvRateTextScaled(ready, available, rate.Read, rate.Written, history, readMax, writeMax)
+			mvStats := compactMVRate(ready, available, rate, history, rates.ViewDiagnostics[key], readMax, writeMax)
 			if flow.Trigger == "" {
-				mvStats += " · " + mutedStyle.Render("trigger unknown")
-			}
-			if ready && !available {
-				if label := metricStateLabel(rates.ViewDiagnostics[key]); label != "" {
-					mvStats += " · " + mutedStyle.Render(label)
-				}
+				mvStats += " · " + mutedStyle.Render("trigger ?")
 			}
 			if rates.Statuses != nil || rates.StatusError != "" {
 				var status *clickhouse.ViewStatus
 				if value, ok := rates.Statuses[key]; ok {
 					status = &value
 				}
-				summary := statusText(status, rates.StatusError, rates.StatusHours)
+				summary := compactStatusText(status, rates.StatusError, time.Now())
 				if status != nil && status.Errors > 0 {
 					mvStats += " · " + errorStyle.Render(summary)
 				} else {
@@ -141,12 +212,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		}
 		value, available := rates.Tables[group.target]
 		history, hasHistory := rates.TableHistory[group.target]
-		total := totalRateTextScaled(ready, value, available, history, hasHistory, totalMax)
-		if ready && !available {
-			if label := metricStateLabel(rates.TableDiagnostics[group.target]); label != "" {
-				total += " · " + mutedStyle.Render(label)
-			}
-		}
+		total := compactTotalRate(ready, value, available, history, hasHistory, totalMax, rates.TableDiagnostics[group.target])
 		targetName := shortName(group.target)
 		targetWidth := maxInt(lipgloss.Width(targetName), lipgloss.Width(total))
 		for j, row := range rows {

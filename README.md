@@ -110,7 +110,7 @@ replica part downloads. Target totals include all observed writers.
 
 The overview and MV detail show observed execution status on the connected node. Press `w` to switch the error window between 24 hours, 1 hour and 7 days; press `e` to inspect up to 50 logged MV errors, then Enter to open the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
 
-Press `o` to open a flow overview for every MV in the selected database. Views
+Press `o` to open a flow overview for every MV in the selected database. The compact overview uses `[T]` for an inferred trigger, `[I]` for another input, `R`/`W` for MV read/write rates, and `ok`/`err` for observed MV status in the selected error window. Rates are rows/s; charts show rows per completed interval. Full timestamps and diagnostics remain available in the MV detail and error screens. Views
 that write to the same target are grouped and connect to one target. Each MV
 occupies two lines: the flow, then rates directly below its inputs and MV. The
 target's total rate is shown directly below the target. Inputs may be repeated

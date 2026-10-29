@@ -106,7 +106,7 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.source": 10, "db.middle": 7}, Views: map[string]clickhouse.ViewRate{"db.mv1": {Read: 10, Written: 5}}}}
 	lines, starts := m.overviewLines()
 	joined := strings.Join(lines, "\n")
-	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "inserted: 10.0 rows/s", "read 10.0 rows/s / write 5.0 rows/s", "total: 7.0 rows/s"} {
+	for _, value := range []string{"source", "lookup", "mv1", "middle", "mv2", "result", "inserted: 10.0", "R 10.0 / W 5.0", "total: 7.0"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview missing %q:\n%s", value, joined)
 		}
@@ -171,7 +171,7 @@ func TestOverviewSharesTargetAndShowsTotalRate(t *testing.T) {
 	if strings.Count(joined, "destination") != 1 {
 		t.Fatalf("expected one target box:\n%s", joined)
 	}
-	for _, want := range []string{"first_mv", "second_mv", "▶", "total: 9.0 rows/s"} {
+	for _, want := range []string{"first_mv", "second_mv", "▶", "total: 9.0"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q in:\n%s", want, joined)
 		}
@@ -197,7 +197,7 @@ func TestOverviewRepeatsSourceAcrossViewsAndTargets(t *testing.T) {
 	if strings.Count(joined, "▶") != 4 {
 		t.Fatalf("expected arrows into both views and targets:\n%s", joined)
 	}
-	for _, want := range []string{"one", "two", "first", "second", "inserted: 12.0 rows/s", "▶"} {
+	for _, want := range []string{"one", "two", "first", "second", "inserted: 12.0", "▶"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q:\n%s", want, joined)
 		}
@@ -254,11 +254,11 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 		}
 		return lipgloss.Width(line[:i])
 	}
-	if col(nameLine, "src") != col(statsLine, "inserted: 12.0 rows/s") || col(nameLine, "users") != col(statsLine, "inserted: 3.0 rows/s") || col(nameLine, "view_one") != col(statsLine, "read 9.0 rows/s / write 5.0 rows/s") {
+	if col(nameLine, "src") != col(statsLine, "inserted: 12.0") || col(nameLine, "users") != col(statsLine, "inserted: 3.0") || col(nameLine, "view_one") != col(statsLine, "R 9.0 / W 5.0") {
 		t.Fatalf("statistics are not below their nodes:\n%s\n%s", nameLine, statsLine)
 	}
 	nameLine, statsLine = ansi.Strip(lines[starts[1]]), ansi.Strip(lines[starts[1]+1])
-	if col(nameLine, "destination") != col(statsLine, "total: 6.0 rows/s") {
+	if col(nameLine, "destination") != col(statsLine, "total: 6.0") {
 		t.Fatalf("target statistic is not aligned:\n%s\n%s", nameLine, statsLine)
 	}
 }
@@ -451,7 +451,7 @@ func TestChartsShowFiveIntervals(t *testing.T) {
 	}
 	overview := clickhouse.OverviewRates{Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 1, Written: 2}}, History: map[string]clickhouse.ViewHistory{"db.mv": hist}, Tables: rates.Tables, TableHistory: rates.TableHistory}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
-	for _, part := range []string{"read 0▂▄·█ 1.0 rows/s", "total: ▂▄▅▇█ 3.0 rows/s"} {
+	for _, part := range []string{"R 0▂▄·█ 1.0", "total: ▂▄▅▇█ 3.0"} {
 		if !strings.Contains(strings.Join(lines, "\n"), part) {
 			t.Errorf("overview missing %q", part)
 		}
@@ -467,8 +467,9 @@ func TestMetricColorsInDetailAndOverview(t *testing.T) {
 	detail := strings.Join(diagramLines(view, rates, true), "\n")
 	overview := clickhouse.OverviewRates{Tables: rates.Tables, Views: map[string]clickhouse.ViewRate{"db.mv": {Read: 3, Written: 2}}}
 	lines, _ := overviewGraph([]clickhouse.View{view}, overview, true, 0, map[string]lipgloss.Color{})
-	for _, text := range []string{detail, strings.Join(lines, "\n")} {
-		for _, item := range []struct{ name, color string }{{"inserted:", "38;2;107;169;191"}, {"read ", "38;2;107;169;191"}, {"write ", "38;2;187;162;105"}, {"total:", "38;2;187;162;105"}} {
+	for _, sample := range []struct{ text, read, write string }{{detail, "read ", "write "}, {strings.Join(lines, "\n"), "R ", "W "}} {
+		text := sample.text
+		for _, item := range []struct{ name, color string }{{"inserted:", "38;2;107;169;191"}, {sample.read, "38;2;107;169;191"}, {sample.write, "38;2;187;162;105"}, {"total:", "38;2;187;162;105"}} {
 			pos := strings.Index(text, item.name)
 			if pos < 0 {
 				t.Errorf("missing %s", item.name)
@@ -500,9 +501,9 @@ func TestOverviewAlignsMetricsAndTargetsAcrossGroups(t *testing.T) {
 		}
 		return lipgloss.Width(line[:i])
 	}
-	readCol, writeCol := col(lines[positions[0]+1], "read "), col(lines[positions[0]+1], "write ")
+	readCol, writeCol := col(lines[positions[0]+1], "R "), col(lines[positions[0]+1], "W ")
 	for _, pos := range positions {
-		if col(lines[pos+1], "read ") != readCol || col(lines[pos+1], "write ") != writeCol {
+		if col(lines[pos+1], "R ") != readCol || col(lines[pos+1], "W ") != writeCol {
 			t.Fatalf("unaligned metrics:\n%s", strings.Join(lines, "\n"))
 		}
 	}
@@ -616,7 +617,7 @@ func TestOverviewHelpAndFooterRemainPinned(t *testing.T) {
 		if len(lines) != height {
 			t.Fatalf("height %d got %d lines", height, len(lines))
 		}
-		for i, want := range []string{"FLOW OVERVIEW", "Rates: 60s", "[trigger]"} {
+		for i, want := range []string{"FLOW OVERVIEW", "Rates: rows/s", "[T]"} {
 			if !strings.Contains(ansi.Strip(lines[2+i]), want) {
 				t.Errorf("header %d: %s", i, lines[2+i])
 			}
@@ -634,7 +635,7 @@ func TestOverviewHeaderPinnedWhenScrolled(t *testing.T) {
 	}
 	m := model{width: 80, height: 12, database: "db", overview: true, views: views, allViews: views, overviewScroll: 9, overviewColumn: 10}
 	lines := strings.Split(m.View(), "\n")
-	if len(lines) != m.height || !strings.Contains(ansi.Strip(lines[2]), "FLOW OVERVIEW") || !strings.Contains(ansi.Strip(lines[3]), "Rates: 60s") || !strings.Contains(ansi.Strip(lines[4]), "[trigger]") || !strings.Contains(ansi.Strip(lines[m.height-1]), "[enter]") {
+	if len(lines) != m.height || !strings.Contains(ansi.Strip(lines[2]), "FLOW OVERVIEW") || !strings.Contains(ansi.Strip(lines[3]), "Rates: rows/s") || !strings.Contains(ansi.Strip(lines[4]), "[T]") || !strings.Contains(ansi.Strip(lines[m.height-1]), "[enter]") {
 		t.Fatalf("header or footer moved: %s", m.View())
 	}
 }
@@ -643,7 +644,7 @@ func TestViewStatusAndErrorNavigation(t *testing.T) {
 	views := []clickhouse.View{{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
 	m := model{width: 120, height: 25, database: "db", overview: true, viewRevision: 3, views: views, allViews: views, overviewReady: true, overviewRates: clickhouse.OverviewRates{Statuses: map[string]clickhouse.ViewStatus{"db.mv": {Errors: 2}}}}
 	lines, _ := m.overviewLines()
-	if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "no success observed · errors 2") {
+	if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "no ok · err 2") {
 		t.Fatal("status missing in overview")
 	}
 	next, cmd := m.Update(mouseKey("e"))
@@ -673,6 +674,25 @@ func TestViewStatusAndErrorNavigation(t *testing.T) {
 	m = next.(model)
 	if !m.overview || m.failuresMode {
 		t.Fatal("did not return to overview")
+	}
+}
+
+func TestCompactOverviewStatusAndNoEvents(t *testing.T) {
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	status := &clickhouse.ViewStatus{Successes: 1, LastSuccess: now.Add(-3 * time.Minute), Errors: 2}
+	if got := compactStatusText(status, "", now); got != "ok 3m · err 2" {
+		t.Fatalf("unexpected status: %s", got)
+	}
+	if got := compactStatusText(nil, "", now); got != "status ?" {
+		t.Fatalf("unexpected missing status: %s", got)
+	}
+	if got := compactStatusText(status, "permission denied", now); got != "status unavailable" {
+		t.Fatalf("unexpected error status: %s", got)
+	}
+	history := &clickhouse.ViewHistory{}
+	got := ansi.Strip(compactMVRate(true, false, clickhouse.ViewRate{}, history, clickhouse.MetricDiagnostic{State: clickhouse.MetricNoEvents}, 0, 0))
+	if got != "R ····· / W ····· · no events" {
+		t.Fatalf("unexpected no-events display: %q", got)
 	}
 }
 

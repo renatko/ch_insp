@@ -1011,7 +1011,7 @@ func (m model) overviewLines() ([]string, []int) {
 	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
 		title += " · FILTERED"
 	}
-	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: 60s avg · charts: " + m.chartPeriodLabel() + " · " + m.chartScaleLabel() + " · local node"), mutedStyle.Render("[trigger]: inferred insert trigger · [input]: other input · 0: zero · ·: no event"), ""}
+	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: rows/s, 60s avg · charts: " + m.chartPeriodLabel() + " · " + m.chartScaleLabel() + " · local node"), mutedStyle.Render("[T] inferred trigger · [I] input · R/W read/write · err " + m.statusWindowLabel() + " observed · 0 zero · · no event"), ""}
 	if len(m.views) == 0 {
 		return append(header, mutedStyle.Render("No matching materialized views.")), nil
 	}
