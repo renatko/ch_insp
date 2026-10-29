@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,6 +10,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestMouseSelectsVisibleNodeAfterClusterSurvey(t *testing.T) {
+	nodes := make([]clickhouse.Node, 10)
+	for i := range nodes {
+		nodes[i] = clickhouse.Node{Cluster: "c", Host: fmt.Sprintf("host-%02d", i), Port: 9000}
+	}
+	m := model{width: 120, height: 20, choosingNode: true, nodes: nodes, nodeCursor: 8, nodeSurvey: &clickhouse.ClusterSurvey{Database: "db", Total: 10}}
+	first := 8 - m.nodeListVisible() + 1
+	next, _ := m.Update(mouseAtText(t, m, nodes[first].Host))
+	if got := next.(model).nodeCursor; got != first {
+		t.Fatalf("clicked visible node %d, selected %d", first, got)
+	}
+}
 
 func mouseAtText(t *testing.T, m model, text string) tea.MouseMsg {
 	t.Helper()

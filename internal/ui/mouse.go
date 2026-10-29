@@ -29,7 +29,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if m.nodeDetails {
 				return m, nil
 			}
-			visible := maxInt(1, m.height-13)
+			visible := m.nodeListVisible()
 			start := maxInt(0, m.nodeCursor-visible+1)
 			firstRow := 6
 			if m.nodeError != nil {

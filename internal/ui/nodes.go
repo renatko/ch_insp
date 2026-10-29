@@ -100,6 +100,13 @@ func (m model) selectedNodeSurvey() *clickhouse.NodeSurvey {
 	}
 	return nil
 }
+func (m model) nodeListVisible() int {
+	reserved := 13
+	if m.nodeSurvey != nil && m.nodeSurvey.Database != "" {
+		reserved += 3
+	}
+	return maxInt(1, m.height-reserved)
+}
 func (m model) renderNodes(width int) string {
 	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render("Direct connections · v: survey selected cluster"), ""}
 	if m.nodeDetails {
@@ -120,11 +127,7 @@ func (m model) renderNodes(width int) string {
 		lines = append(lines, errorStyle.Render(m.nodeError.Error()))
 	}
 	if !m.nodeLoading {
-		reserved := 13
-		if m.nodeSurvey != nil && m.nodeSurvey.Database != "" {
-			reserved += 3
-		}
-		visible := maxInt(1, m.height-reserved)
+		visible := m.nodeListVisible()
 		start := maxInt(0, m.nodeCursor-visible+1)
 		end := minInt(len(m.nodes), start+visible)
 		if len(m.nodes) == 0 {
