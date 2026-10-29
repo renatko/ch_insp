@@ -2,6 +2,38 @@
 
 Terminal UI for inspecting ClickHouse materialized views and their definitions.
 
+## Docker demo
+
+The demo starts a standalone ClickHouse server and a separate one-shard, two-replica cluster, using the pinned ClickHouse **26.8.36.3 LTS** image. A traffic generator continuously inserts synthetic events into both environments. Docker Compose and access to the container images are required.
+
+```sh
+docker compose -f demo/compose.yaml up -d --wait
+```
+
+Open the standalone server from the host:
+
+```sh
+go run . --host localhost --port 19100 --database demo
+```
+
+For the cluster, run the TUI on the Docker network so that both advertised node names are reachable. The first run builds the application image:
+
+```sh
+docker compose -f demo/compose.yaml --profile tui run --build --rm tui
+```
+
+Press `o` for the flow overview. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
+
+The `demo` database contains `page_views`, `purchases`, `refunds` and `heartbeat`, whose four MVs write to the shared `activity` target. `page_views_mv` joins the `segments` lookup table. A fifth MV reads `activity`, groups events and writes to `daily_activity`, forming a second stage. `heartbeat` uses the `Null` engine: its inserts trigger the MV but are not retained, so its `inserted` metric based on `NewPart` is unavailable. On the standalone server, the remaining tables use `MergeTree`; in the cluster the event and target tables use `ReplicatedMergeTree`, while each replica has a local `MergeTree` lookup table. Events are generated on the standalone server and both replicas; the MergeTree event tables use a one-day TTL. The default user has no password: this is an isolated local demo, not a production configuration. Native ports bind to loopback, but containers on the Compose network can access the servers.
+
+Verify the running demo, including data and MV log events:
+
+```sh
+./demo/scripts/check.sh
+```
+
+Stop and remove only the demo containers and network with `docker compose -f demo/compose.yaml down`. Demo data lives in container storage and is discarded when the containers are removed. Ports can be changed with `DEMO_STANDALONE_PORT`, `DEMO_REPLICA1_PORT` and `DEMO_REPLICA2_PORT`; internal cluster addresses do not change.
+
 ## Run
 
 Set a ClickHouse DSN in `CLICKHOUSE_URL`, then start the TUI:

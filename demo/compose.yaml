@@ -1,0 +1,78 @@
+name: chinspector-demo
+
+x-server: &server
+  image: clickhouse/clickhouse-server:26.8.36.3
+  environment:
+    CLICKHOUSE_SKIP_USER_SETUP: "1"
+  healthcheck:
+    test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+    interval: 3s
+    timeout: 3s
+    retries: 50
+
+services:
+  standalone:
+    <<: *server
+    hostname: standalone
+    ports:
+      - "127.0.0.1:${DEMO_STANDALONE_PORT:-19100}:9000"
+    volumes:
+      - ./config/logs.xml:/etc/clickhouse-server/config.d/demo-logs.xml:ro
+      - ./config/users.xml:/etc/clickhouse-server/users.d/demo-users.xml:ro
+  replica1:
+    <<: *server
+    hostname: replica1
+    ports:
+      - "127.0.0.1:${DEMO_REPLICA1_PORT:-19101}:9000"
+    volumes:
+      - ./config/logs.xml:/etc/clickhouse-server/config.d/demo-logs.xml:ro
+      - ./config/users.xml:/etc/clickhouse-server/users.d/demo-users.xml:ro
+      - ./config/cluster.xml:/etc/clickhouse-server/config.d/demo-cluster.xml:ro
+      - ./config/replica1.xml:/etc/clickhouse-server/config.d/demo-replica.xml:ro
+      - ./config/keeper.xml:/etc/clickhouse-server/config.d/demo-keeper.xml:ro
+  replica2:
+    <<: *server
+    hostname: replica2
+    ports:
+      - "127.0.0.1:${DEMO_REPLICA2_PORT:-19102}:9000"
+    volumes:
+      - ./config/logs.xml:/etc/clickhouse-server/config.d/demo-logs.xml:ro
+      - ./config/users.xml:/etc/clickhouse-server/users.d/demo-users.xml:ro
+      - ./config/cluster.xml:/etc/clickhouse-server/config.d/demo-cluster.xml:ro
+      - ./config/replica2.xml:/etc/clickhouse-server/config.d/demo-replica.xml:ro
+    depends_on:
+      replica1:
+        condition: service_healthy
+  init:
+    image: clickhouse/clickhouse-server:26.8.36.3
+    entrypoint: ["/bin/bash", "/demo/init.sh"]
+    volumes:
+      - ./scripts:/demo:ro
+    depends_on:
+      standalone:
+        condition: service_healthy
+      replica1:
+        condition: service_healthy
+      replica2:
+        condition: service_healthy
+  traffic:
+    image: clickhouse/clickhouse-server:26.8.36.3
+    entrypoint: ["/bin/bash", "/demo/traffic.sh"]
+    volumes:
+      - ./scripts:/demo:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  tui:
+    profiles: ["tui"]
+    build:
+      context: ..
+      dockerfile: demo/Dockerfile
+    environment:
+      CLICKHOUSE_URL: clickhouse://default@replica1:9000/demo
+    stdin_open: true
+    tty: true
+    depends_on:
+      init:
+        condition: service_completed_successfully
