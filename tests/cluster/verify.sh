@@ -6,19 +6,21 @@ set -euo pipefail
 fixture_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 project="chinspector-fixture-$(date +%s)-$$"
 compose=(docker compose --project-name "$project" --file "$fixture_dir/compose.yaml")
+fixture_tmp=$(mktemp -d)
 cleanup() {
   local status=$?
   if (( status != 0 )); then
     "${compose[@]}" logs --tail=60 >&2 || true
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$fixture_tmp"
 }
 trap cleanup EXIT
 
 query() {
   local service=$1 sql=$2
   shift 2
-  "${compose[@]}" exec -T "$service" clickhouse-client --query "$sql" "$@"
+  "${compose[@]}" exec -T "$service" clickhouse-client --query "$sql" "$@" </dev/null
 }
 wait_for() {
   local description=$1 service=$2 sql=$3
@@ -36,6 +38,16 @@ wait_for() {
 printf 'Starting disposable project %s\n' "$project"
 "${compose[@]}" up --detach --wait --wait-timeout 150
 wait_for 'Keeper availability' ch1 "SELECT count() >= 0 FROM system.zookeeper WHERE path = '/'"
+if [[ ${CHINSPECTOR_FIXTURE_GO_TEST:-1} == 1 ]]; then
+  arch=$("${compose[@]}" exec -T ch1 uname -m </dev/null)
+  case "$arch" in
+    x86_64) goarch=amd64 ;;
+    aarch64|arm64) goarch=arm64 ;;
+    *) printf 'Unsupported container architecture: %s\n' "$arch" >&2; exit 1 ;;
+  esac
+  (cd "$fixture_dir/../.." && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go test -c -o "$fixture_tmp/clickhouse.test" ./internal/clickhouse)
+  "${compose[@]}" cp "$fixture_tmp/clickhouse.test" ch1:/tmp/chinspector-clickhouse.test
+fi
 
 for node in ch1 ch2; do
   query "$node" 'CREATE DATABASE flow_test'
@@ -61,8 +73,10 @@ for node in ch1 ch2; do
   wait_for "replicated target on $node" "$node" 'SELECT count() = 6 FROM flow_test.dst'
 done
 wait_for 'MV success events' ch1 "SELECT count() > 0 FROM clusterAllReplicas('chinspector_test', system.query_views_log) WHERE view_name = 'flow_test.mv' AND status = 'QueryFinish'"
+wait_for 'all MV rows in the logs' ch1 "SELECT sum(read_rows) = 6 AND sum(written_rows) = 6 FROM clusterAllReplicas('chinspector_test', system.query_views_log) WHERE view_name = 'flow_test.mv' AND status = 'QueryFinish'"
 wait_for 'MV failure event' ch1 "SELECT count() > 0 FROM system.query_views_log WHERE view_name = 'flow_test.bad_mv' AND status IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')"
 wait_for 'replica part downloads' ch1 "SELECT count() > 0 FROM clusterAllReplicas('chinspector_test', system.part_log) WHERE database = 'flow_test' AND table = 'src' AND event_type = 'DownloadPart' AND error = 0"
+wait_for 'all NewPart rows in the logs' ch1 "SELECT sum(rows) >= 12 FROM clusterAllReplicas('chinspector_test', system.part_log) WHERE database = 'flow_test' AND table IN ('src', 'dst') AND event_type = 'NewPart' AND error = 0"
 
 printf '\nVersions and cluster topology:\n'
 query ch1 "SELECT hostName(), version() FROM clusterAllReplicas('chinspector_test', system.one) ORDER BY hostName()"
@@ -73,8 +87,14 @@ printf '\nNewPart and DownloadPart rows (per node):\n'
 query ch1 "SELECT hostname, table, event_type, count() AS events, sum(rows) AS rows FROM clusterAllReplicas('chinspector_test', system.part_log) WHERE database = 'flow_test' AND table IN ('src', 'dst') AND event_type IN ('NewPart', 'DownloadPart') AND error = 0 GROUP BY hostname, table, event_type ORDER BY hostname, table, event_type"
 printf '\nInitial query IDs observed on more than one node (inspect before deduplicating):\n'
 query ch1 "SELECT initial_query_id, view_name, groupUniqArray(hostname) AS hosts, count() AS events FROM clusterAllReplicas('chinspector_test', system.query_views_log) WHERE view_name IN ('flow_test.mv', 'flow_test.bad_mv') AND initial_query_id != '' GROUP BY initial_query_id, view_name HAVING length(hosts) > 1 ORDER BY initial_query_id"
+if [[ ${CHINSPECTOR_FIXTURE_GO_TEST:-1} == 1 ]]; then
+  "${compose[@]}" exec -T -e CHINSPECTOR_FIXTURE_URL=clickhouse://ch1:9000 ch1 /tmp/chinspector-clickhouse.test -test.run '^TestClusterMetricsFixtureIntegration$' -test.v </dev/null
+fi
 printf '\nChecking partial availability after stopping the second replica:\n'
 "${compose[@]}" stop ch2
 wait_for 'one responding replica' ch1 "SELECT count() = 1 FROM clusterAllReplicas('chinspector_test', system.one) SETTINGS skip_unavailable_shards = 1, connect_timeout_with_failover_ms = 1000"
+if [[ ${CHINSPECTOR_FIXTURE_GO_TEST:-1} == 1 ]]; then
+  "${compose[@]}" exec -T -e CHINSPECTOR_FIXTURE_URL=clickhouse://ch1:9000 -e CHINSPECTOR_FIXTURE_PARTIAL=1 ch1 /tmp/chinspector-clickhouse.test -test.run '^TestClusterMetricsFixtureIntegration$' -test.v </dev/null
+fi
 printf 'Only one of two configured replicas responded; these results are incomplete.\n'
 printf '\nFixture checks passed. Results describe only these synthetic operations, not every ClickHouse topology.\n'

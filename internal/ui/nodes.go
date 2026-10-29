@@ -71,6 +71,7 @@ func (m *model) connectNode(node clickhouse.Node) tea.Cmd {
 func (m *model) surveySelectedCluster() tea.Cmd {
 	cluster := m.nodes[m.nodeCursor].Cluster
 	dsn := m.dsn
+	database := m.database
 	nodes := append([]clickhouse.Node(nil), m.nodes...)
 	if m.nodeCancel != nil {
 		m.nodeCancel()
@@ -84,7 +85,7 @@ func (m *model) surveySelectedCluster() tea.Cmd {
 	m.nodeDetails = false
 	return func() tea.Msg {
 		defer cancel()
-		return nodeSurveyLoadedMsg{request: request, survey: clickhouse.SurveyCluster(ctx, dsn, nodes, cluster)}
+		return nodeSurveyLoadedMsg{request: request, survey: clickhouse.SurveyClusterMetrics(ctx, dsn, nodes, cluster, database)}
 	}
 }
 func (m model) selectedNodeSurvey() *clickhouse.NodeSurvey {
@@ -119,7 +120,11 @@ func (m model) renderNodes(width int) string {
 		lines = append(lines, errorStyle.Render(m.nodeError.Error()))
 	}
 	if !m.nodeLoading {
-		visible := maxInt(1, m.height-13)
+		reserved := 13
+		if m.nodeSurvey != nil && m.nodeSurvey.Database != "" {
+			reserved += 3
+		}
+		visible := maxInt(1, m.height-reserved)
 		start := maxInt(0, m.nodeCursor-visible+1)
 		end := minInt(len(m.nodes), start+visible)
 		if len(m.nodes) == 0 {
@@ -155,6 +160,35 @@ func (m model) renderNodes(width int) string {
 			}
 		}
 		lines = append(lines, mutedStyle.Render(fmt.Sprintf("Survey %s: %d/%d nodes responded%s · e: details", m.nodeSurvey.Cluster, responded, m.nodeSurvey.Total, suffix)))
+		if m.nodeSurvey.Database != "" {
+			var parts, reads, writes uint64
+			partNodes, viewNodes := 0, 0
+			seen := map[string]bool{}
+			for _, result := range m.nodeSurvey.Nodes {
+				key := fmt.Sprintf("%s:%d", result.Node.Host, result.Node.Port)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				if result.Error != "" {
+					continue
+				}
+				if result.PartLogError == "" {
+					parts += result.PartRows
+					partNodes++
+				}
+				if result.ViewLogError == "" {
+					reads += result.ViewReadRows
+					writes += result.ViewWrittenRows
+					viewNodes++
+				}
+			}
+			lines = append(lines, mutedStyle.Render(fmt.Sprintf("%s · observed rows / 60s · node events, not logical totals", m.nodeSurvey.Database)))
+			lines = append(lines, mutedStyle.Render(fmt.Sprintf("NewPart: %d (%d/%d nodes) · MV read: %d / write: %d (%d/%d nodes)", parts, partNodes, m.nodeSurvey.Total, reads, writes, viewNodes, m.nodeSurvey.Total)))
+			if partNodes != m.nodeSurvey.Total || viewNodes != m.nodeSurvey.Total {
+				lines = append(lines, errorStyle.Render("Partial: missing, duplicate, or unchecked nodes/logs"))
+			}
+		}
 	}
 	return strings.Join(append(lines, "", mutedStyle.Render("↑/↓ select  [v] survey cluster  [e] details  [enter] connect  [esc] back")), "\n")
 }
@@ -176,6 +210,14 @@ func (m model) nodeDetailLines(width int) []string {
 		view = "not checked"
 	}
 	text := fmt.Sprintf("%s:%d · %s\nserver: %s\nversion: %s\nconnection: %s\npart_log: %s\nquery_views_log: %s", details.Node.Host, details.Node.Port, details.Node.Cluster, details.Server, details.Version, detailOrOK(details.Error), part, view)
+	if m.nodeSurvey.Database != "" && details.Error == "" {
+		if details.PartLogError == "" {
+			text += fmt.Sprintf("\nNewPart rows / 60s: %d", details.PartRows)
+		}
+		if details.ViewLogError == "" {
+			text += fmt.Sprintf("\nMV read / write rows / 60s: %d / %d", details.ViewReadRows, details.ViewWrittenRows)
+		}
+	}
 	var out []string
 	for _, line := range strings.Split(text, "\n") {
 		out = append(out, strings.Split(ansi.Hardwrap(line, maxInt(1, width), true), "\n")...)

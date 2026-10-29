@@ -137,3 +137,45 @@ func TestClusterSurveyIntegration(t *testing.T) {
 		}
 	}
 }
+
+// The disposable fixture provides the expected values and runs this test from
+// inside its Docker network, where the advertised hostnames are reachable.
+func TestClusterMetricsFixtureIntegration(t *testing.T) {
+	dsn := os.Getenv("CHINSPECTOR_FIXTURE_URL")
+	if dsn == "" {
+		t.Skip("requires the disposable replica fixture")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	nodes, err := LoadNodes(ctx, dsn)
+	if err != nil {
+		t.Fatal(RedactConnectionError(err, dsn))
+	}
+	survey := SurveyClusterMetrics(ctx, dsn, nodes, "chinspector_test", "flow_test")
+	if survey.Total != 2 || len(survey.Nodes) != 2 || survey.Truncated {
+		t.Fatalf("unexpected coverage: %#v", survey)
+	}
+	var parts, reads, writes uint64
+	available := 0
+	for _, n := range survey.Nodes {
+		if n.Error != "" {
+			continue
+		}
+		if n.PartLogError != "" || n.ViewLogError != "" {
+			t.Fatalf("log error: %#v", n)
+		}
+		available++
+		parts += n.PartRows
+		reads += n.ViewReadRows
+		writes += n.ViewWrittenRows
+	}
+	if os.Getenv("CHINSPECTOR_FIXTURE_PARTIAL") == "1" {
+		if available != 1 {
+			t.Fatalf("expected one available node, got %d", available)
+		}
+		return
+	}
+	if available != 2 || parts < 12 || reads != 6 || writes != 6 {
+		t.Fatalf("unexpected observed events: nodes=%d parts=%d read=%d write=%d", available, parts, reads, writes)
+	}
+}

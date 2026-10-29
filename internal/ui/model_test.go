@@ -803,6 +803,27 @@ func TestClusterSurveySelectionAndFailureDetail(t *testing.T) {
 	}
 }
 
+func TestClusterSurveyMetricsShowPartialCoverage(t *testing.T) {
+	node1 := clickhouse.Node{Cluster: "c", Host: "one", Port: 9000}
+	node2 := clickhouse.Node{Cluster: "c", Host: "two", Port: 9000}
+	survey := clickhouse.ClusterSurvey{Cluster: "c", Database: "db", Total: 2, Nodes: []clickhouse.NodeSurvey{
+		{Node: node1, Server: "one", PartRows: 10, ViewReadRows: 4, ViewWrittenRows: 3},
+		{Node: node2, Server: "two", PartRows: 5, ViewLogError: "denied"},
+	}}
+	m := model{width: 120, height: 25, nodes: []clickhouse.Node{node1, node2}, nodeSurvey: &survey}
+	got := ansi.Strip(m.renderNodes(120))
+	for _, want := range []string{"node events, not logical totals", "NewPart: 15 (2/2 nodes)", "MV read: 4 / write: 3 (1/2 nodes)", "Partial:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %s", want, got)
+		}
+	}
+	m.nodeDetails = true
+	got = ansi.Strip(m.renderNodes(120))
+	if !strings.Contains(got, "NewPart rows / 60s: 10") || !strings.Contains(got, "MV read / write rows / 60s: 4 / 3") {
+		t.Fatalf("node details missing: %s", got)
+	}
+}
+
 func TestErrorWindowSwitchReloadsAndRejectsStale(t *testing.T) {
 	m := model{width: 120, height: 25, database: "db", views: []clickhouse.View{{Database: "db", Name: "mv"}}, failuresMode: true}
 	old := m.loadFailures()

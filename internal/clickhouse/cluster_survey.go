@@ -12,13 +12,15 @@ import (
 const clusterSurveyLimit = 64
 
 type NodeSurvey struct {
-	Node                       Node
-	Server, Version            string
-	Error                      string
-	PartLogError, ViewLogError string
+	Node                                    Node
+	Server, Version                         string
+	Error                                   string
+	PartLogError, ViewLogError              string
+	PartRows, ViewReadRows, ViewWrittenRows uint64
 }
 type ClusterSurvey struct {
 	Cluster   string
+	Database  string
 	Nodes     []NodeSurvey
 	Total     int
 	Truncated bool
@@ -29,6 +31,15 @@ type nodeProbe func(context.Context, string, Node) NodeSurvey
 // read-only metadata/log permission checks and never computes cluster totals.
 func SurveyCluster(ctx context.Context, dsn string, nodes []Node, cluster string) ClusterSurvey {
 	return surveyCluster(ctx, dsn, nodes, cluster, probeNode)
+}
+
+// SurveyClusterMetrics counts observed physical events, not deduplicated logical inserts.
+func SurveyClusterMetrics(ctx context.Context, dsn string, nodes []Node, cluster, database string) ClusterSurvey {
+	result := surveyCluster(ctx, dsn, nodes, cluster, func(ctx context.Context, dsn string, node Node) NodeSurvey {
+		return probeNodeMetrics(ctx, dsn, node, database)
+	})
+	result.Database = database
+	return result
 }
 func surveyCluster(ctx context.Context, dsn string, nodes []Node, cluster string, probe nodeProbe) ClusterSurvey {
 	var selected []Node
@@ -81,6 +92,9 @@ func surveyCluster(ctx context.Context, dsn string, nodes []Node, cluster string
 	return out
 }
 func probeNode(ctx context.Context, dsn string, node Node) NodeSurvey {
+	return probeNodeMetrics(ctx, dsn, node, "")
+}
+func probeNodeMetrics(ctx context.Context, dsn string, node Node, database string) NodeSurvey {
 	result := NodeSurvey{Node: node}
 	nodeDSN, err := NodeDSN(dsn, node)
 	if err != nil {
@@ -107,6 +121,20 @@ func probeNode(ctx context.Context, dsn string, node Node) NodeSurvey {
 	}
 	result.PartLogError = check("part_log")
 	result.ViewLogError = check("query_views_log")
+	if database != "" {
+		if result.PartLogError == "" {
+			err = db.QueryRowContext(ctx, `SELECT coalesce(sum(rows), 0) FROM system.part_log WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND AND event_time <= now() AND database = ? AND event_type = 'NewPart' AND error = 0`, database).Scan(&result.PartRows)
+			if err != nil {
+				result.PartLogError = RedactConnectionError(err, nodeDSN).Error()
+			}
+		}
+		if result.ViewLogError == "" {
+			err = db.QueryRowContext(ctx, `SELECT coalesce(sum(read_rows), 0), coalesce(sum(written_rows), 0) FROM system.query_views_log WHERE event_date >= today() - 1 AND event_time > now() - INTERVAL 60 SECOND AND event_time <= now() AND startsWith(view_name, concat(?, '.')) AND view_type = 'Materialized' AND status = 'QueryFinish'`, database).Scan(&result.ViewReadRows, &result.ViewWrittenRows)
+			if err != nil {
+				result.ViewLogError = RedactConnectionError(err, nodeDSN).Error()
+			}
+		}
+	}
 	return result
 }
 

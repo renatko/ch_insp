@@ -15,12 +15,13 @@ fi
 if [[ " $* " == *" INSERT INTO flow_test.bad_src "* ]]; then
   exit 1
 fi
-if [[ " $* " == *"SELECT count()"* ]]; then
+if [[ " $* " == *"SELECT count()"* || " $* " == *"SELECT sum("* ]]; then
   printf '1\n'
 fi
 EOF
 chmod +x "$tmp/docker"
 export PATH="$tmp:$PATH"
+export CHINSPECTOR_FIXTURE_GO_TEST=0
 
 "$fixture_dir/verify.sh" > "$tmp/success.out"
 grep -Fq 'Fixture checks passed' "$tmp/success.out"
