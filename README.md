@@ -24,7 +24,14 @@ docker compose -f demo/compose.yaml --profile tui run --build --rm tui
 
 Press `o` for the flow overview. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
 
-The `demo` database contains `page_views`, `purchases`, `refunds` and `heartbeat`, whose four MVs write to the shared `activity` target. `page_views_mv` joins the `segments` lookup table. A fifth MV reads `activity`, groups events and writes to `daily_activity`, forming a second stage. `heartbeat` uses the `Null` engine: its inserts trigger the MV but are not retained, so its `inserted` metric based on `NewPart` is unavailable. On the standalone server, the remaining tables use `MergeTree`; in the cluster the event and target tables use `ReplicatedMergeTree`, while each replica has a local `MergeTree` lookup table. Events are generated on the standalone server and both replicas; the MergeTree event tables use a one-day TTL. The default user has no password: this is an isolated local demo, not a production configuration. Native ports bind to loopback, but containers on the Compose network can access the servers.
+The `demo` database has 16 materialized views with branching and shared targets:
+
+- `page_views`, `purchases`, `refunds` and `heartbeat` feed the shared `activity` table. `page_views_mv` also joins the `segments` lookup table.
+- `activity` feeds `daily_activity`, then `revenue_daily`; other views select events for `value_alerts` and `audit_events`.
+- Purchases and refunds also feed a shared `customer_ledger`, which feeds `ledger_hourly`. Page views feed `page_metrics`; page views and heartbeats also feed `audit_events`, which feeds `audit_summary`.
+- The views include filters, joins, expressions and grouped aggregates. Inserts into `heartbeat` use the `Null` engine: they trigger MVs but are not retained, so its `inserted` metric based on `NewPart` is unavailable.
+
+On the standalone server, the other tables use `MergeTree`; in the cluster the event and target tables use `ReplicatedMergeTree`, while each replica has a local `MergeTree` lookup table. Events are generated on the standalone server and both replicas; the MergeTree event tables use a one-day TTL. The default user has no password: this is an isolated local demo, not a production configuration. Native ports bind to loopback, but containers on the Compose network can access the servers.
 
 Verify the running demo, including data and MV log events:
 
