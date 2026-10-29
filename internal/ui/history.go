@@ -87,6 +87,8 @@ func totalRateTextScaled(ready bool, value float64, available bool, history clic
 
 func metricStateLabel(d clickhouse.MetricDiagnostic) string {
 	switch d.State {
+	case clickhouse.MetricOffline:
+		return "offline"
 	case clickhouse.MetricNoEvents:
 		return "no events observed"
 	case clickhouse.MetricUnsupported:

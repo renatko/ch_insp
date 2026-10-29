@@ -35,13 +35,25 @@ func (m *model) loadTarget() tea.Cmd {
 	m.columnsCancel = cancel
 	m.columnsRequest++
 	request := m.columnsRequest
+	dump := m.dump
 	m.targetLoading, m.targetError = true, nil
 	m.targetColumn = 0
 	return func() tea.Msg {
 		defer cancel()
 		var data clickhouse.TargetColumns
 		var err error
-		if explicit != "" {
+		if dump != nil {
+			target := explicit
+			if target == "" {
+				target = clickhouse.InferFlow(view).Target
+			}
+			database, table, ok := strings.Cut(target, ".")
+			if !ok {
+				err = fmt.Errorf("no explicit target table in SQL dump")
+			} else {
+				data, err = dump.TargetColumns(database, table, catalog)
+			}
+		} else if explicit != "" {
 			database, table, ok := strings.Cut(explicit, ".")
 			if !ok {
 				err = fmt.Errorf("cannot identify database for %s", explicit)

@@ -6,7 +6,11 @@ import (
 )
 
 func (m model) columnLines() []string {
-	lines := []string{accentStyle.Render("COLUMN FLOW"), mutedStyle.Render("Static SQL analysis + system.columns · c: back to diagram"), ""}
+	source := "Static SQL analysis + system.columns · c: back to diagram"
+	if m.schemaPath != "" {
+		source = "Static SQL analysis + dump columns · offline · c: back to diagram"
+	}
+	lines := []string{accentStyle.Render("COLUMN FLOW"), mutedStyle.Render(source), ""}
 	if m.columnsLoading {
 		return append(lines, mutedStyle.Render("Loading column metadata…"))
 	}

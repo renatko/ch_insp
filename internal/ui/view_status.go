@@ -53,13 +53,20 @@ func (m *model) loadFailures() tea.Cmd {
 	m.columnsCancel = cancel
 	m.columnsRequest++
 	request := m.columnsRequest
+	offline := m.schemaPath != ""
 	m.failuresLoading = true
 	m.failuresError = nil
 	m.failureSelected = 0
 	m.failureDetail = false
 	return func() tea.Msg {
 		defer cancel()
-		failures, err := clickhouse.LoadViewFailures(ctx, dsn, view, hours)
+		var failures []clickhouse.ViewFailure
+		var err error
+		if offline {
+			err = fmt.Errorf("offline: MV execution errors are unavailable in a SQL dump")
+		} else {
+			failures, err = clickhouse.LoadViewFailures(ctx, dsn, view, hours)
+		}
 		return failuresLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, failures: failures, err: err}
 	}
 }

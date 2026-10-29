@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	dsn, err := config.Parse(os.Args[1:], os.Getenv("CLICKHOUSE_URL"), os.Stderr)
+	options, err := config.ParseOptions(os.Args[1:], os.Getenv("CLICKHOUSE_URL"), os.Stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
@@ -19,7 +19,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	if err := ui.Run(dsn); err != nil {
+	if options.SchemaPath != "" {
+		err = ui.RunSchema(options.SchemaPath, options.Database)
+	} else {
+		err = ui.Run(options.DSN)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

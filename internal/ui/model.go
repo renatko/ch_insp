@@ -15,6 +15,7 @@ import (
 
 type viewsLoadedMsg struct {
 	catalog clickhouse.Catalog
+	dump    *clickhouse.SQLDump
 	err     error
 }
 
@@ -42,6 +43,9 @@ type columnsLoadedMsg struct {
 
 type model struct {
 	dsn                            string
+	schemaPath                     string
+	schemaDatabase                 string
+	dump                           *clickhouse.SQLDump
 	databases                      []string
 	database                       string
 	nodeName                       string
@@ -147,7 +151,25 @@ func Run(dsn string) error {
 	return err
 }
 
+func RunSchema(path, database string) error {
+	_, err := tea.NewProgram(model{dsn: "offline:", schemaPath: path, schemaDatabase: database, loading: true}, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	return err
+}
+
+func loadSchema(path, database string) tea.Cmd {
+	return func() tea.Msg {
+		dump, err := clickhouse.LoadSQLDump(path, database)
+		if err != nil {
+			return viewsLoadedMsg{err: err}
+		}
+		return viewsLoadedMsg{catalog: dump.Catalog, dump: dump}
+	}
+}
+
 func (m model) Init() tea.Cmd {
+	if m.schemaPath != "" {
+		return loadSchema(m.schemaPath, m.schemaDatabase)
+	}
 	return tea.Batch(loadViews(m.dsn), metricsTick())
 }
 
@@ -157,6 +179,10 @@ func metricsTick() tea.Cmd {
 
 func loadMetrics(dsn string, view clickhouse.View, period int, hours int, epoch uint64) tea.Cmd {
 	return func() tea.Msg {
+		if dsn == "offline:" {
+			all := offlineOverview([]clickhouse.View{view})
+			return metricsLoadedMsg{epoch: epoch, period: period, key: view.Database + "\x00" + view.Name, rates: clickhouse.Rates{Tables: all.Tables, TableDiagnostics: all.TableDiagnostics, MVDiagnostic: clickhouse.MetricDiagnostic{State: clickhouse.MetricOffline}}}
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		return metricsLoadedMsg{epoch: epoch, period: period, key: view.Database + "\x00" + view.Name, rates: clickhouse.LoadRates(ctx, dsn, view, period, hours)}
@@ -166,10 +192,25 @@ func loadMetrics(dsn string, view clickhouse.View, period int, hours int, epoch 
 func loadOverview(dsn, database string, views []clickhouse.View, revision int, period int, hours int, epoch uint64) tea.Cmd {
 	views = append([]clickhouse.View(nil), views...)
 	return func() tea.Msg {
+		if dsn == "offline:" {
+			return overviewLoadedMsg{epoch: epoch, period: period, database: database, revision: revision, rates: offlineOverview(views)}
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		return overviewLoadedMsg{epoch: epoch, period: period, database: database, revision: revision, rates: clickhouse.LoadOverviewRates(ctx, dsn, views, period, hours)}
 	}
+}
+
+func offlineOverview(views []clickhouse.View) clickhouse.OverviewRates {
+	result := clickhouse.OverviewRates{Tables: map[string]float64{}, Views: map[string]clickhouse.ViewRate{}, TableDiagnostics: map[string]clickhouse.MetricDiagnostic{}, ViewDiagnostics: map[string]clickhouse.MetricDiagnostic{}}
+	for _, view := range views {
+		result.ViewDiagnostics[view.Database+"."+view.Name] = clickhouse.MetricDiagnostic{State: clickhouse.MetricOffline}
+		flow := clickhouse.InferFlow(view)
+		for _, name := range append(flow.Sources, flow.Target) {
+			result.TableDiagnostics[name] = clickhouse.MetricDiagnostic{State: clickhouse.MetricOffline}
+		}
+	}
+	return result
 }
 
 func loadViews(dsn string) tea.Cmd {
@@ -191,10 +232,17 @@ func (m *model) loadColumns() tea.Cmd {
 	m.columnsCancel = cancel
 	m.columnsRequest++
 	request := m.columnsRequest
+	dump := m.dump
 	m.columnsLoading, m.columnsError = true, nil
 	return func() tea.Msg {
 		defer cancel()
-		data, err := clickhouse.LoadColumnLineage(ctx, dsn, view)
+		var data clickhouse.ColumnLineage
+		var err error
+		if dump != nil {
+			data, err = dump.ColumnLineage(view)
+		} else {
+			data, err = clickhouse.LoadColumnLineage(ctx, dsn, view)
+		}
 		return columnsLoadedMsg{key: view.Database + "\x00" + view.Name, revision: revision, request: request, data: data, err: err}
 	}
 }
@@ -218,6 +266,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.metricsReady = false
 		m.overviewReady = false
 		if msg.err == nil {
+			if m.schemaPath != "" {
+				m.dump = msg.dump
+			}
 			m.databases, m.allViews = msg.catalog.Databases, msg.catalog.Views
 			m.nodeName = msg.catalog.Node
 			m.nodeVersion = msg.catalog.ServerVersion
@@ -302,6 +353,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case metricsTickMsg:
+		if m.schemaPath != "" {
+			return m, nil
+		}
 		if m.overview && len(m.views) > 0 && !m.loading && m.err == nil && !m.overviewBusy {
 			m.overviewBusy = true
 			return m, tea.Batch(metricsTick(), loadOverview(m.dsn, m.database, m.views, m.viewRevision, m.chartPeriodSeconds(), m.statusWindowHours(), m.chartEpoch))
@@ -450,6 +504,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "n":
+			if m.schemaPath != "" {
+				m.choosingNode = true
+				m.nodeError = fmt.Errorf("offline: node selection requires a live connection")
+				return m, nil
+			}
 			if !m.loading && m.err == nil {
 				m.choosingNode = true
 				return m, m.loadNodes()
@@ -505,6 +564,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelColumns()
 			m.loading, m.err = true, nil
 			m.lineOffset, m.columnOffset = 0, 0
+			if m.schemaPath != "" {
+				return m, loadSchema(m.schemaPath, m.schemaDatabase)
+			}
 			return m, loadViews(m.dsn)
 		case "o":
 			m.dependencies = false
@@ -885,6 +947,9 @@ func (m model) renderView() string {
 	}
 
 	b.WriteString(accentStyle.Render("ch_insp"))
+	if m.schemaPath != "" {
+		b.WriteString(mutedStyle.Render("  /  OFFLINE SQL"))
+	}
 	b.WriteString(mutedStyle.Render("  /  ClickHouse materialized views"))
 	if m.database != "" {
 		b.WriteString(accentStyle.Render("  /  DB: " + m.database))
@@ -903,11 +968,19 @@ func (m model) renderView() string {
 		return b.String()
 	}
 	if m.err != nil {
-		b.WriteString(errorStyle.Render("Could not load materialized views"))
+		if m.schemaPath != "" {
+			b.WriteString(errorStyle.Render("Could not load SQL dump"))
+		} else {
+			b.WriteString(errorStyle.Render("Could not load materialized views"))
+		}
 		b.WriteString("\n")
 		b.WriteString(m.err.Error())
 		b.WriteString("\n\n")
-		b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
+		if m.schemaPath != "" {
+			b.WriteString(mutedStyle.Render("[r] reload SQL dump  [q] quit"))
+		} else {
+			b.WriteString(mutedStyle.Render("Set CLICKHOUSE_URL.  [r] retry  [q] quit"))
+		}
 		return b.String()
 	}
 	if m.choosingNode {
@@ -1019,8 +1092,22 @@ func (m model) overviewLines() ([]string, []int) {
 		title += " · FILTERED"
 	}
 	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: rows/s, 60s avg · charts: " + m.chartPeriodLabel() + " · " + m.chartScaleLabel() + " · local node"), mutedStyle.Render("[T] inferred trigger · [I] input · R/W read/write · err " + m.statusWindowLabel() + " observed · 0 zero · · no event"), ""}
+	if m.schemaPath != "" {
+		warnings := 0
+		if m.dump != nil {
+			warnings = len(m.dump.Warnings)
+		}
+		header[1] = mutedStyle.Render(fmt.Sprintf("OFFLINE SQL · rates and execution status unavailable · %d import warnings", warnings))
+		header[2] = mutedStyle.Render("[T] inferred trigger · [I] other input · r: reload dump")
+	}
 	if len(m.views) == 0 {
-		return append(header, mutedStyle.Render("No matching materialized views.")), nil
+		header = append(header, mutedStyle.Render("No matching materialized views."))
+		if m.dump != nil {
+			for _, warning := range m.dump.Warnings {
+				header = append(header, errorStyle.Render("SQL dump: "+warning))
+			}
+		}
+		return header, nil
 	}
 	allViews := m.allViews
 	if allViews == nil {
@@ -1033,6 +1120,11 @@ func (m model) overviewLines() ([]string, []int) {
 		positions[i] += len(header)
 	}
 	lines := append(header, graph...)
+	if m.dump != nil {
+		for _, warning := range m.dump.Warnings {
+			lines = append(lines, errorStyle.Render("SQL dump: "+warning))
+		}
+	}
 	if m.overviewReady {
 		if m.overviewRates.StatusError != "" {
 			lines = append(lines, errorStyle.Render("MV status: "+m.overviewRates.StatusError))
@@ -1086,7 +1178,13 @@ func (m model) renderOverview(width int) string {
 
 func (m model) renderDetail(width, height int) string {
 	if len(m.views) == 0 {
-		return mutedStyle.Render("Select a materialized view to inspect its definition.")
+		lines := []string{mutedStyle.Render("No materialized views in the selected database.")}
+		if m.dump != nil {
+			for _, warning := range m.dump.Warnings {
+				lines = append(lines, errorStyle.Render("SQL dump: "+warning))
+			}
+		}
+		return strings.Join(lines, "\n")
 	}
 	lines := m.detailLines()
 	visible := maxInt(1, height-2)
@@ -1118,17 +1216,30 @@ func (m model) detailLines() []string {
 		lines = append(lines, strings.Split(view.Definition, "\n")...)
 	} else {
 		lines = append(lines, accentStyle.Render("DATA FLOW"), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
+		if m.dump != nil {
+			for _, warning := range m.dump.Warnings {
+				lines = append(lines, errorStyle.Render("SQL dump: "+warning))
+			}
+		}
 		lines = append(lines, diagramLines(view, m.rates, m.metricsReady)...)
 		if clickhouse.InferFlow(view).Trigger == "" {
 			lines = append(lines, mutedStyle.Render("Trigger unknown; inspect the MV definition."))
 		}
 		if m.metricsReady {
-			lines = append(lines, "", mutedStyle.Render(statusText(m.rates.Status, m.rates.StatusError, m.statusWindowHours())), mutedStyle.Render("e: MV errors"))
+			status := statusText(m.rates.Status, m.rates.StatusError, m.statusWindowHours())
+			if m.schemaPath != "" {
+				status = "execution status: offline"
+			}
+			lines = append(lines, "", mutedStyle.Render(status), mutedStyle.Render("e: MV errors"))
 			if m.rates.StatusError != "" {
 				lines = append(lines, errorStyle.Render("Status: "+m.rates.StatusError))
 			}
 		}
-		lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: "+m.chartPeriodLabel()+"."), mutedStyle.Render("Bars: oldest → newest · 0: observed zero · ·: no event; logs may be delayed."), mutedStyle.Render("inserted/total: system.part_log · MV: system.query_views_log"), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		if m.schemaPath != "" {
+			lines = append(lines, "", mutedStyle.Render("OFFLINE: metrics and execution logs are unavailable."))
+		} else {
+			lines = append(lines, "", mutedStyle.Render("Local logs: rates 60s average; charts: "+m.chartPeriodLabel()+"."), mutedStyle.Render("Bars: oldest → newest · 0: observed zero · ·: no event; logs may be delayed."), mutedStyle.Render("inserted/total: system.part_log · MV: system.query_views_log"), mutedStyle.Render("JOIN inputs may not trigger incremental MVs."))
+		}
 		if m.metricsReady {
 			for _, err := range m.rates.Errors {
 				lines = append(lines, errorStyle.Render("Metrics: "+err))
@@ -1186,7 +1297,9 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	}
 	sourceColumnWidth = maxInt(sourceColumnWidth, sourceWidth+4)
 	mvMetric := mvRateText(ready, rates.MVAvailable, rates.MVRead, rates.MVWritten, rates.MVHistory)
-	if ready && !rates.MVAvailable {
+	if ready && rates.MVDiagnostic.State == clickhouse.MetricOffline {
+		mvMetric = mutedStyle.Render("read/write: offline")
+	} else if ready && !rates.MVAvailable {
 		if label := metricStateLabel(rates.MVDiagnostic); label != "" {
 			mvMetric += " · " + mutedStyle.Render(label)
 		}
@@ -1196,13 +1309,17 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	targetValue, targetAvailable := rates.Tables[flow.Target]
 	targetHistory, targetHistoryAvailable := rates.TableHistory[flow.Target]
 	targetTotal := totalRateText(ready, targetValue, targetAvailable, targetHistory, targetHistoryAvailable)
-	if ready && !targetAvailable {
+	if ready && rates.TableDiagnostics[flow.Target].State == clickhouse.MetricOffline {
+		targetTotal = writeMetricStyle.Render("total: offline")
+	} else if ready && !targetAvailable {
 		if label := metricStateLabel(rates.TableDiagnostics[flow.Target]); label != "" {
 			targetTotal += " · " + mutedStyle.Render(label)
 		}
 	}
 	if !ready {
 		targetMV = "MV: loading"
+	} else if rates.MVDiagnostic.State == clickhouse.MetricOffline {
+		targetMV = "MV: offline"
 	} else if rates.MVAvailable {
 		targetMV = fmt.Sprintf("MV: %.1f rows/s", rates.MVWritten)
 	}

@@ -11,10 +11,19 @@ import (
 	"strings"
 )
 
-// Parse returns the connection URL. Explicit flags override CLICKHOUSE_URL.
+// Options selects either a live connection or a local SQL schema.
+type Options struct{ DSN, SchemaPath, Database string }
+
+// Parse preserves the connection-only API for callers and tests.
 func Parse(args []string, envURL string, output io.Writer) (string, error) {
+	options, err := ParseOptions(args, envURL, output)
+	return options.DSN, err
+}
+
+func ParseOptions(args []string, envURL string, output io.Writer) (Options, error) {
 	fs := flag.NewFlagSet("ch_insp", flag.ContinueOnError)
 	fs.SetOutput(output)
+	schema := fs.String("schema", "", "read an SQL schema dump without connecting to ClickHouse")
 	dsn := fs.String("url", "", "ClickHouse connection URL (default: CLICKHOUSE_URL)")
 	host := fs.String("host", "", "ClickHouse host (default: localhost)")
 	port := fs.Int("port", 0, "ClickHouse native TCP port (default: 9000)")
@@ -24,19 +33,33 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 	secure := fs.Bool("secure", false, "use TLS for the connection")
 	fs.Usage = func() { fmt.Fprintln(output, "Usage: ch_insp [options]"); fs.PrintDefaults() }
 	if err := fs.Parse(args); err != nil {
-		return "", err
+		return Options{}, err
 	}
 	if fs.NArg() != 0 {
-		return "", fmt.Errorf("unexpected positional argument")
+		return Options{}, fmt.Errorf("unexpected positional argument")
 	}
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if set["schema"] {
+		if strings.TrimSpace(*schema) == "" {
+			return Options{}, fmt.Errorf("--schema cannot be empty")
+		}
+		for _, name := range []string{"url", "host", "port", "user", "password", "secure"} {
+			if set[name] {
+				return Options{}, fmt.Errorf("--schema cannot be combined with --%s", name)
+			}
+		}
+		if set["database"] && *database == "" {
+			return Options{}, fmt.Errorf("--database cannot be empty")
+		}
+		return Options{SchemaPath: *schema, Database: *database}, nil
+	}
 	if !set["url"] {
 		*dsn = envURL
 	}
 	if strings.TrimSpace(*dsn) == "" {
 		if len(set) == 0 || (len(set) == 1 && set["url"]) {
-			return "", nil
+			return Options{}, nil
 		}
 		*dsn = "clickhouse://localhost:9000/default"
 	}
@@ -44,12 +67,12 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 	if err != nil {
 		var parseErr *url.Error
 		if errors.As(err, &parseErr) {
-			return "", fmt.Errorf("invalid ClickHouse URL: %w", parseErr.Err)
+			return Options{}, fmt.Errorf("invalid ClickHouse URL: %w", parseErr.Err)
 		}
-		return "", fmt.Errorf("invalid ClickHouse URL")
+		return Options{}, fmt.Errorf("invalid ClickHouse URL")
 	}
 	if u.Scheme == "" || u.Host == "" {
-		return "", fmt.Errorf("invalid ClickHouse URL: expected scheme and host")
+		return Options{}, fmt.Errorf("invalid ClickHouse URL: expected scheme and host")
 	}
 	if set["host"] || set["port"] {
 		name, portValue := u.Hostname(), u.Port()
@@ -57,12 +80,12 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 			name = strings.TrimSpace(*host)
 			name = strings.TrimPrefix(strings.TrimSuffix(name, "]"), "[")
 			if name == "" || (strings.Contains(name, ":") && net.ParseIP(name) == nil) {
-				return "", fmt.Errorf("invalid --host: use a hostname or IP address without a port")
+				return Options{}, fmt.Errorf("invalid --host: use a hostname or IP address without a port")
 			}
 		}
 		if set["port"] {
 			if *port < 1 || *port > 65535 {
-				return "", fmt.Errorf("invalid --port: must be between 1 and 65535")
+				return Options{}, fmt.Errorf("invalid --port: must be between 1 and 65535")
 			}
 			portValue = strconv.Itoa(*port)
 		}
@@ -95,7 +118,7 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 	}
 	if set["database"] {
 		if *database == "" {
-			return "", fmt.Errorf("--database cannot be empty")
+			return Options{}, fmt.Errorf("--database cannot be empty")
 		}
 		u.Path = "/" + *database
 		u.RawPath = "/" + url.PathEscape(*database)
@@ -105,5 +128,5 @@ func Parse(args []string, envURL string, output io.Writer) (string, error) {
 		q.Set("secure", strconv.FormatBool(*secure))
 		u.RawQuery = q.Encode()
 	}
-	return u.String(), nil
+	return Options{DSN: u.String()}, nil
 }

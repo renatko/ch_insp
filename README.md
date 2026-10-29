@@ -45,6 +45,16 @@ Stop and remove only the demo containers and network with `docker compose -f dem
 
 Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
 
+To inspect an existing SQL schema dump without connecting to ClickHouse, pass a local SQL file:
+
+```sh
+./ch_insp --schema ./schema.sql
+```
+
+The file is read and parsed locally; its statements are never executed. `CREATE DATABASE`, `USE`, `CREATE TABLE` and `CREATE MATERIALIZED VIEW` provide the catalog, table columns and view definitions. Unqualified names use the most recent `USE`, or `default` when no `USE` is present; pass `--database NAME` to choose the initial context for unqualified names. The initial database displayed is selected from the imported catalog. The file may be up to 32 MiB. Unsupported statements and parse errors are reported as import warnings; the diagram and column lineage are best-effort and incomplete if the dump omits referenced objects or uses unsupported SQL. The original definition remains available via `d`.
+
+The header says `OFFLINE SQL`: execution status, rates, historical charts, live node selection and server-side `EXPLAIN` are unavailable. `r` rereads the file. `--schema` cannot be combined with connection flags; an existing `CLICKHOUSE_URL` is ignored in this mode. This feature reads an existing SQL file and does not create or export a dump.
+
 Set a ClickHouse DSN in `CLICKHOUSE_URL`, then start the TUI:
 
 ```sh

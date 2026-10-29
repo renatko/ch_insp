@@ -92,3 +92,15 @@ func TestInvalidOptionsAndSecretRedaction(t *testing.T) {
 		t.Fatal("help output leaked credentials")
 	}
 }
+
+func TestSQLDumpOptions(t *testing.T) {
+	opts, err := ParseOptions([]string{"--schema", "schema.sql", "--database", "shop"}, "clickhouse://ignored:9000/default", &bytes.Buffer{})
+	if err != nil || opts.SchemaPath != "schema.sql" || opts.Database != "shop" || opts.DSN != "" {
+		t.Fatalf("incorrect offline options: %#v %v", opts, err)
+	}
+	for _, args := range [][]string{{"--schema", ""}, {"--schema", "schema.sql", "--host", "localhost"}, {"--schema", "schema.sql", "--url", "clickhouse://localhost:9000"}} {
+		if _, err := ParseOptions(args, "", &bytes.Buffer{}); err == nil {
+			t.Fatalf("expected error for %v", args)
+		}
+	}
+}

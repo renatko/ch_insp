@@ -15,6 +15,7 @@ const (
 	MetricUnsupported         MetricState = "unsupported engine"
 	MetricMetadataUnavailable MetricState = "metadata unavailable"
 	MetricLogError            MetricState = "log query failed"
+	MetricOffline             MetricState = "offline"
 )
 
 type MetricDiagnostic struct {
