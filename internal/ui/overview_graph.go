@@ -21,7 +21,7 @@ func compactMetricLabel(label string) string {
 
 func compactMVRate(ready, available bool, rate clickhouse.ViewRate, history *clickhouse.ViewHistory, diagnostic clickhouse.MetricDiagnostic, readMax, writeMax uint64) string {
 	if !ready {
-		return mutedStyle.Render("R/W loading")
+		return mutedStyle.Render("R") + " / " + mutedStyle.Render("W") + " · " + mutedStyle.Render("loading")
 	}
 	read, write := "R", "W"
 	if history != nil {
@@ -36,9 +36,6 @@ func compactMVRate(ready, available bool, rate clickhouse.ViewRate, history *cli
 	label := compactMetricLabel(metricStateLabel(diagnostic))
 	if label == "" {
 		label = "no data"
-	}
-	if history == nil {
-		return mutedStyle.Render("R/W " + label)
 	}
 	return readMetricStyle.Render(read) + " / " + writeMetricStyle.Render(write) + " · " + mutedStyle.Render(label)
 }
@@ -94,8 +91,8 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 
 func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color, targetFocus bool) ([]string, []int) {
 	type row struct {
-		index                             int
-		inputs, inputStats, name, mvStats string
+		index                                     int
+		inputs, inputStats, name, mvStats, status string
 	}
 	type group struct {
 		target  string
@@ -116,7 +113,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		}
 		groups[index].indices = append(groups[index].indices, i)
 	}
-	inputWidth, mvWidth, readWidth := 0, 0, 0
+	inputWidth, mvWidth, readWidth, writeWidth, noteWidth := 0, 0, 0, 0, 0
 	var readMax, writeMax, totalMax uint64
 	if rates.SharedScale {
 		readMax, writeMax, totalMax = chartMaxima(views, rates)
@@ -164,6 +161,7 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			if flow.Trigger == "" {
 				mvStats += " · " + mutedStyle.Render("trigger ?")
 			}
+			statusText := ""
 			if rates.Statuses != nil || rates.StatusError != "" {
 				var status *clickhouse.ViewStatus
 				if value, ok := rates.Statuses[key]; ok {
@@ -171,16 +169,19 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				}
 				summary := compactStatusText(status, rates.StatusError, time.Now())
 				if status != nil && status.Errors > 0 {
-					mvStats += " · " + errorStyle.Render(summary)
+					statusText = errorStyle.Render(summary)
 				} else {
-					mvStats += " · " + mutedStyle.Render(summary)
+					statusText = mutedStyle.Render(summary)
 				}
 			}
 			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
-			if left, _, ok := strings.Cut(mvStats, " / "); ok {
+			if left, right, ok := strings.Cut(mvStats, " / "); ok {
 				readWidth = maxInt(readWidth, lipgloss.Width(left))
+				write, note, _ := strings.Cut(right, " · ")
+				writeWidth = maxInt(writeWidth, lipgloss.Width(write))
+				noteWidth = maxInt(noteWidth, lipgloss.Width(note))
 			}
-			group.rows = append(group.rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats})
+			group.rows = append(group.rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats, status: statusText})
 		}
 	}
 	pad := func(value string, width int) string {
@@ -190,7 +191,18 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 		for j := range groups[i].rows {
 			row := &groups[i].rows[j]
 			if left, right, ok := strings.Cut(row.mvStats, " / "); ok {
-				row.mvStats = pad(left, readWidth) + " / " + right
+				write, note, hasNote := strings.Cut(right, " · ")
+				row.mvStats = pad(left, readWidth) + " / " + pad(write, writeWidth)
+				if noteWidth > 0 {
+					if hasNote {
+						row.mvStats += " · " + pad(note, noteWidth)
+					} else {
+						row.mvStats += strings.Repeat(" ", 3+noteWidth)
+					}
+				}
+				if row.status != "" {
+					row.mvStats += " · " + row.status
+				}
 			}
 			mvWidth = maxInt(mvWidth, maxInt(lipgloss.Width(row.name), lipgloss.Width(row.mvStats)))
 		}

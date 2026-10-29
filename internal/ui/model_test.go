@@ -513,6 +513,35 @@ func TestOverviewAlignsMetricsAndTargetsAcrossGroups(t *testing.T) {
 	}
 }
 
+func TestOverviewAlignsColumnsWithMissingMetrics(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "first", Definition: "CREATE MATERIALIZED VIEW first TO dst AS SELECT * FROM src"},
+		{Database: "db", Name: "second", Definition: "CREATE MATERIALIZED VIEW second TO dst AS SELECT * FROM src"},
+		{Database: "db", Name: "third", Definition: "CREATE MATERIALIZED VIEW third TO dst AS SELECT * FROM src"},
+	}
+	rates := clickhouse.OverviewRates{Views: map[string]clickhouse.ViewRate{"db.first": {Read: 12, Written: 3456}, "db.second": {Read: 2, Written: 3}}, History: map[string]clickhouse.ViewHistory{"db.first": {}}, Statuses: map[string]clickhouse.ViewStatus{}}
+	lines, positions := overviewGraph(views, rates, true, 0, nil)
+	var writeColumn, noteColumn int
+	for i, pos := range positions {
+		line := ansi.Strip(lines[pos+1])
+		write := strings.Index(line, "W ")
+		if write < 0 {
+			t.Fatalf("missing write column: %q", line)
+		}
+		note := strings.Index(line[write:], "status ?")
+		if note < 0 {
+			t.Fatalf("missing diagnostic/status: %q", line)
+		}
+		wcol := lipgloss.Width(line[:write])
+		ncol := lipgloss.Width(line[:write+note])
+		if i == 0 {
+			writeColumn, noteColumn = wcol, ncol
+		} else if wcol != writeColumn || ncol != noteColumn {
+			t.Fatalf("misaligned columns: %s", strings.Join(lines, "\n"))
+		}
+	}
+}
+
 func TestOverviewTargetKeyboardNavigation(t *testing.T) {
 	views := []clickhouse.View{
 		{Database: "db", Name: "first", Definition: "CREATE MATERIALIZED VIEW first TO dst_a AS SELECT * FROM src"},
