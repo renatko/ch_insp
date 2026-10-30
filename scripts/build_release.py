@@ -109,6 +109,7 @@ def main():
             subprocess.run(["go", "build", "-mod=readonly", "-trimpath", "-buildvcs=false", "-o", str(stage / binary), "."], cwd=ROOT, env=env, check=True)
             shutil.copyfile(ROOT / "LICENSE", stage / "LICENSE")
             shutil.copyfile(ROOT / "README.md", stage / "README.md")
+            shutil.copytree(ROOT / "docs", stage / "docs")
             collect_licenses(stage, env)
             if os_name == "windows":
                 with zipfile.ZipFile(output / archive, "w", zipfile.ZIP_DEFLATED) as zipped:

@@ -53,6 +53,8 @@ def main():
                 license_text = archive.extractfile("LICENSE").read()
         assert license_text == (ROOT / "LICENSE").read_bytes(), f"project license mismatch: {name}"
         assert "README.md" in names and "THIRD_PARTY_LICENSES/README.txt" in names, f"documentation missing: {name}"
+        for document in ("docs/usage.md", "docs/metrics.md", "docs/lineage.md", "docs/demo.md", "docs/development.md", "docs/assets/demo.gif"):
+            assert document in names, f"missing {document}: {name}"
         assert "THIRD_PARTY_LICENSES/go/LICENSE" in names, f"Go license missing: {name}"
         assert any(n.startswith("THIRD_PARTY_LICENSES/modules/") and "/LICENSE" in n for n in names), f"dependency licenses missing: {name}"
         if os_name == "windows":
