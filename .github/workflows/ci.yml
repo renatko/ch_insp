@@ -57,3 +57,18 @@ jobs:
       - name: Stop demo
         if: always()
         run: docker compose -f demo/compose.yaml down --remove-orphans
+
+  release-build:
+    name: Release builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Build release archives
+        run: python3 scripts/build_release.py "$RUNNER_TEMP/chinspector-release"
+      - name: Verify archives and checksums
+        run: python3 tests/release/check_archives.py "$RUNNER_TEMP/chinspector-release"

@@ -210,11 +210,11 @@ in the diagrams cover the connected server only; the separate node survey report
 
 ## Read-only cluster test
 
-Pull requests run the Go test suite and a Docker demo smoke test in GitHub
-Actions. The demo job checks the data and logs on all three nodes, runs the
-ClickHouse-local query tests, builds the TUI image and opens it against the
-replica. The separate disposable cluster fixture described below is not run by
-this workflow.
+Pull requests run the Go test suite, cross-platform release builds and a Docker
+demo smoke test in GitHub Actions. The demo job checks the data and logs on all
+three nodes, runs the ClickHouse-local query tests, builds the TUI image and
+opens it against the replica. The separate disposable cluster fixture described
+below is not run by this workflow.
 
 The optional cluster integration check is intended for a disposable test cluster with at least two nodes. Set `CHINSPECTOR_TEST_CLUSTER_URL` in the environment and `CHINSPECTOR_TEST_CLUSTER_NAME` to the configured cluster, then run:
 
@@ -253,6 +253,23 @@ moves the selection over the MV list and scrolls the diagram or SQL elsewhere.
 Use horizontal wheel scrolling, or Shift + wheel when supported, to scroll
 horizontally. Hold Shift while selecting text if your terminal supports that
 override for mouse capture.
+
+## Release artifacts
+
+Publishing a GitHub release for a tag containing the release workflow builds
+and attaches archives for Linux, macOS and Windows on amd64 and arm64, plus a
+`SHA256SUMS` file. Each archive contains the executable, README, project license
+and notices for its Go dependencies. The binaries are not signed or notarized.
+
+Release builds can be reproduced and checked locally:
+
+```sh
+python3 scripts/build_release.py /tmp/chinspector-dist
+python3 tests/release/check_archives.py /tmp/chinspector-dist
+```
+
+Use an empty output directory. The release workflow will not overwrite existing
+assets; remove conflicting assets before rerunning a partially completed release.
 
 ## License
 
