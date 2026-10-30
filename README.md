@@ -210,6 +210,12 @@ in the diagrams cover the connected server only; the separate node survey report
 
 ## Read-only cluster test
 
+Pull requests run the Go test suite and a Docker demo smoke test in GitHub
+Actions. The demo job checks the data and logs on all three nodes, runs the
+ClickHouse-local query tests, builds the TUI image and opens it against the
+replica. The separate disposable cluster fixture described below is not run by
+this workflow.
+
 The optional cluster integration check is intended for a disposable test cluster with at least two nodes. Set `CHINSPECTOR_TEST_CLUSTER_URL` in the environment and `CHINSPECTOR_TEST_CLUSTER_NAME` to the configured cluster, then run:
 
 ```sh
