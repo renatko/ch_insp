@@ -247,3 +247,7 @@ moves the selection over the MV list and scrolls the diagram or SQL elsewhere.
 Use horizontal wheel scrolling, or Shift + wheel when supported, to scroll
 horizontally. Hold Shift while selecting text if your terminal supports that
 override for mouse capture.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
