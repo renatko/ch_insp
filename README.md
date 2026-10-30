@@ -43,7 +43,7 @@ Stop and remove only the demo containers and network with `docker compose -f dem
 
 ## Run
 
-Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
+Go 1.27.3 or newer is required. Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
 
 To inspect an existing SQL schema dump without connecting to ClickHouse, pass a local SQL file:
 
