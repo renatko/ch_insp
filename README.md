@@ -1,276 +1,94 @@
 # ch_insp
 
-Terminal UI for inspecting ClickHouse materialized views and their definitions.
+A read-only terminal UI for exploring ClickHouse materialized views and the data flows between their source and target tables.
 
-## Docker demo
+![ch_insp demo: explore flows, filter tables, inspect columns and SQL](docs/assets/demo.gif)
 
-The demo starts a standalone ClickHouse server and a separate one-shard, two-replica cluster, using the pinned ClickHouse **26.8.36.3 LTS** image. A traffic generator continuously inserts synthetic events into both environments, varying the number of inserts, rows per insert and intervals between them. Docker Compose and access to the container images are required.
+## What it does
+
+- Visualize source tables → materialized views → target tables, including shared targets and multiple inputs.
+- Search and filter flows; inspect table dependencies, target columns, column lineage and SQL definitions.
+- Observe local-node read/write rates, recent history and materialized-view errors when ClickHouse logs are available.
+- Switch between discovered cluster nodes, or inspect a SQL schema dump offline without a server.
+
+## Install
+
+Download an archive for Linux, macOS or Windows (amd64 or arm64) from [GitHub Releases](https://github.com/renatko/ch_insp/releases/latest). Extract it and run `ch_insp` (`ch_insp.exe` on Windows). The release also provides SHA-256 checksums; archives include license notices. Binaries are not signed or notarized.
+
+To build from source, install Go 1.27.3 or newer:
+
+```sh
+git clone https://github.com/renatko/ch_insp.git
+cd ch_insp
+go build -o ch_insp .
+```
+
+## Quick start
+
+Connect to ClickHouse using a URL or command-line options:
+
+```sh
+export CLICKHOUSE_URL='clickhouse://default@localhost:9000/demo'
+./ch_insp
+```
+
+Or pass connection options explicitly:
+
+```sh
+./ch_insp --host localhost --port 9000 --user default --database demo
+```
+
+For credentials, prefer the environment variable over command-line arguments, which may be visible in process listings and shell history. See [connection options](docs/usage.md#connecting-and-offline-mode) for TLS, precedence and defaults.
+
+To explore a local SQL dump without a ClickHouse server, use `./ch_insp --schema /path/to/schema.sql`. From a source checkout, you can try the included example:
+
+```sh
+go run . --schema ./demo/schema.sql
+```
+
+The dump is read locally; its statements are not executed. Offline mode does not provide live metrics, execution errors or node switching. See [offline mode](docs/usage.md#connecting-and-offline-mode).
+
+## Try the demo
+
+From a source checkout with Docker Compose installed:
 
 ```sh
 docker compose -f demo/compose.yaml up -d --wait
-```
-
-Open the standalone server from the host:
-
-```sh
-go run . --host localhost --port 19100 --database demo
-```
-
-For the cluster, run the TUI on the Docker network so that both advertised node names are reachable. The first run builds the application image:
-
-```sh
 docker compose -f demo/compose.yaml --profile tui run --build --rm tui
 ```
 
-The flow overview opens at startup. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
+The demo provides a standalone server and a two-replica cluster with synthetic traffic. To stop it, run `docker compose -f demo/compose.yaml down`; demo data stored in its containers is discarded. See [demo setup and verification](docs/demo.md).
 
-The `demo` database has 16 materialized views with branching and shared targets:
+## Basic controls
 
-- `page_views`, `purchases`, `refunds` and `heartbeat` feed the shared `activity` table. `page_views_mv` also joins the `segments` lookup table.
-- `activity` feeds `daily_activity`, then `revenue_daily`; other views select events for `value_alerts` and `audit_events`.
-- Purchases and refunds also feed a shared `customer_ledger`, which feeds `ledger_hourly`. Page views feed `page_metrics`; page views and heartbeats also feed `audit_events`, which feeds `audit_summary`.
-- The views include filters, joins, expressions and grouped aggregates. Inserts into `heartbeat` use the `Null` engine: they trigger MVs but are not retained, so its `inserted` metric based on `NewPart` is unavailable.
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, `←` / `→` | Navigate flows and targets |
+| `Enter` | Open the selected MV or target |
+| `f` / `/` | Filter or search flows |
+| `t` / `g` | Inspect a target or table dependencies |
+| `c` / `d` | Open column flow or SQL from the MV detail |
+| `e` / `w` | Inspect observed MV errors / change error window |
+| `p` / `s` | Change chart period / scale |
+| `b` / `n` | Switch database / inspect nodes |
+| `Esc` / `q` | Go back / quit |
 
-On the standalone server, the other tables use `MergeTree`; in the cluster the event and target tables use `ReplicatedMergeTree`, while each replica has a local `MergeTree` lookup table. Events are generated on the standalone server and both replicas; the MergeTree event tables use a one-day TTL. The default user has no password: this is an isolated local demo, not a production configuration. Native ports bind to loopback, but containers on the Compose network can access the servers.
+Mouse selection, clicking and scrolling are also supported. See the [complete controls](docs/usage.md#keyboard-and-mouse).
 
-Verify the running demo, including data and MV log events:
+## Reading the overview
 
-```sh
-./demo/scripts/check.sh
-```
+`[T]` marks an inferred insert trigger and `[I]` another query input; these roles and column lineage are derived from SQL, not observed writes. `R` and `W` are MV read/write rates; target `total` includes observed writers. Charts use five completed intervals: `0` means an event reported zero rows, while `·` means no event was observed.
 
-Stop and remove only the demo containers and network with `docker compose -f demo/compose.yaml down`. Demo data lives in container storage and is discarded when the containers are removed. Ports can be changed with `DEMO_STANDALONE_PORT`, `DEMO_REPLICA1_PORT` and `DEMO_REPLICA2_PORT`; internal cluster addresses do not change.
+Access is read-only. Metrics are local to the connected node and depend on ClickHouse system logs, which can be delayed, disabled or sampled; missing events do not prove inactivity. See [metrics and node surveys](docs/metrics.md) and [lineage limitations](docs/lineage.md).
 
-## Run
+## Documentation
 
-Go 1.27.3 or newer is required. Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
-
-To inspect an existing SQL schema dump without connecting to ClickHouse, pass a local SQL file:
-
-```sh
-./ch_insp --schema ./schema.sql
-```
-
-For an example, open the checked-in standalone demo schema with `go run . --schema ./demo/schema.sql`. It contains DDL only and does not require Docker or a running ClickHouse server.
-
-The file is read and parsed locally; its statements are never executed. `CREATE DATABASE`, `USE`, `CREATE TABLE` and `CREATE MATERIALIZED VIEW` provide the catalog, table columns and view definitions. Unqualified names use the most recent `USE`, or `default` when no `USE` is present; pass `--database NAME` to choose the initial context for unqualified names. The initial database displayed is selected from the imported catalog. The file may be up to 32 MiB. Unsupported statements and parse errors are reported as import warnings; the diagram and column lineage are best-effort and incomplete if the dump omits referenced objects or uses unsupported SQL. The original definition remains available via `d`.
-
-The header says `OFFLINE SQL`: execution status, rates, historical charts, live node selection and server-side `EXPLAIN` are unavailable. `r` rereads the file. `--schema` cannot be combined with connection flags; an existing `CLICKHOUSE_URL` is ignored in this mode. This feature reads an existing SQL file and does not create or export a dump.
-
-Set a ClickHouse DSN in `CLICKHOUSE_URL`, then start the TUI:
-
-```sh
-export CLICKHOUSE_URL='clickhouse://user:password@localhost:9000/default'
-go run .
-```
-
-Alternatively, pass connection options on the command line:
-
-```sh
-go run . --host localhost --port 9000 --user default --database default
-```
-
-Available options are `--url`, `--host`, `--port`, `--user`, `--password`,
-`--database` and `--secure` (TLS). Run `go run . --help` for usage.
-`--url` overrides `CLICKHOUSE_URL`, and individual options override the
-corresponding URL fields. With individual options and no URL, defaults are
-`localhost:9000`, user `default` and database `default`; without any connection
-settings the application asks for a URL. A password passed with `--password`
-or `--url` can be visible in process arguments and shell history. For a
-password, prefer setting `CLICKHOUSE_URL` in the environment.
-
-The application reads `system.databases` and `system.tables` to list databases and materialized views and show each
-view's inferred source-to-view-to-target diagram and `CREATE` definition. It only runs read-only queries. The
-configured ClickHouse user should have permission to read the relevant system
-metadata.
-
-The header shows the connected node and ClickHouse server version. Press `n` to inspect entries from `system.clusters` and connect directly to an advertised native TCP node using the current credentials and TLS settings. The current connection remains active if validation fails. Addresses must be reachable from the client; HTTP connections cannot use this switch because the cluster advertises native ports. In the node selector, press `v` to survey the selected cluster: up to 64 nodes are checked with bounded concurrency and timeouts for connectivity, version and read access to both logs. The survey sums observed events for the active database over the preceding 60 seconds, and reports coverage separately for each log. Press `e` for a node's counts and errors. The sum is partial when any configured node or log is unavailable, omitted by the limit, or duplicated by address. This is a snapshot; press `v` again to refresh it.
-
-Cluster counts are sums of physical events reported by nodes, not deduplicated logical inserts: `NewPart` includes source, target and other tables in the database, while MV read/write counts include successful materialized view executions. Replica downloads are excluded. Distributed queries, replicated tables, multiple views, duplicate addresses advertised under different names, server clock skew, and disabled, delayed or sampled logs can make these numbers differ from logical flow. A zero means no rows were observed in the available logs, not proof of inactivity. The diagram and its histories continue to show only the connected node; they are not mixed with the survey.
-
-The overview stays in the background while details and selectors open in a centered panel. Filters, search and selection use compact panels; diagrams, SQL, column flow, targets, dependencies and errors use a wider panel with seven columns of margin on each side. The frame shows the navigation path; detail titles stay visible while scrolling. Press `Esc` to return to the previous view; on small terminals screens use the available space directly. Mouse clicks and scrolling apply to the open panel.
-
-The initial database is the connection's current database. Press `b` to choose
-another database, including one with no materialized views. The active database
-is shown in the header; names in the list and diagram are unqualified. A view
-can reference another database, so identical short names can represent different
-tables. The SQL definition remains unchanged and shows the full references.
-
-The diagram recognizes simple table references after `FROM` and `JOIN` and a
-target after `TO` in the stored SQL. Complex expressions, table functions,
-aliases and other SQL constructs may not be resolved completely. Sources are
-query inputs, not necessarily insert triggers: for incremental materialized
-views a joined table does not trigger the view when it receives inserts. The diagram marks the leftmost physical input of a supported incremental MV, including simple CTEs and subqueries as `[trigger]` and other query inputs as `[input]`; unsupported or refreshable definitions show `trigger unknown`. These roles are inferred from SQL. A
-view without `TO` uses internal storage. Check the SQL definition with `d`. The SQL viewer adds line breaks to parser-supported definitions; press `v` to switch between formatted and original text. Unsupported definitions are shown as originally received. Formatting never changes or executes the definition.
-
-Press `t` (or click **target**) from a selected MV or the overview to inspect its target table. The target screen shows a compact list of target columns and matching materialized views. Use ↑/↓ or click a column to show its expressions and source columns below; PgUp/PgDn or the mouse wheel scrolls the details. Click a view in the left panel to inspect a different target. Long types are shortened in the list; the selected column shows the full target type and, when known and different, the MV schema type alongside it. Different types do not necessarily imply an error. On narrow screens the list shows a count of matching views when their names do not fit. It considers visible MVs across databases, independently of the current filters. Columns without an identified MV output and their defaults are shown too. These are potential mappings inferred from definitions, not observed writes: direct inserts, inaccessible views and unsupported SQL can make the picture incomplete. Press `t` again to return. Views without an explicit `TO` have internal storage and do not have a separate target table to inspect.
-
-In the detailed view, press `c` (or click **columns**) to inspect column flows.
-For each SELECT output it shows the expression, referenced input columns,
-available MV and target types, and whether the target has a matching column
-name. The top-level JOIN, PREWHERE, WHERE, GROUP BY and HAVING clauses are
-shown explicitly, formatted by the parser; the original SQL remains available
-with `d`. Additional references from JOIN, WHERE, GROUP BY and similar clauses and
-target columns not identified in the SELECT are listed separately. The feature
-reads `system.columns` and parses the stored definition. For a restricted subset
-of queries it also uses `EXPLAIN QUERY TREE`; it does not execute the view's SELECT. It needs permission to read the relevant column metadata.
-
-Column lineage is a best-effort analysis, not an execution trace. It
-follows supported SELECT and WITH aliases, CTEs, FROM subqueries, scalar
-subqueries and lambda parameters back to source columns; intermediate
-transformations are shown as a chain such as `orders.price → cost: price * 2`. Ambiguous or unresolved
-identifiers are marked explicitly. Correlated subqueries, UNION, ARRAY JOIN,
-table functions, wildcard modifiers and other complex syntax can require manual
-inspection; wildcard expansion needs unambiguous source and MV metadata. A
-missing target match or type can also mean metadata is unavailable. Use `d`
-to inspect the original SQL.
-
-When a reference cannot be resolved, the column view distinguishes missing
-`system.columns` metadata, multiple possible sources, alias/name collisions,
-and unsupported wildcard or query constructs. For missing metadata it names
-the affected table and preserves ClickHouse errors in the warnings. A collision
-between an alias and a source column can depend on
-`prefer_column_name_to_alias`. The app reads this setting from the current
-connection to resolve collisions when a query does not override settings, and
-warns when the setting was used. If the setting is unavailable or the query
-overrides settings, the collision remains unresolved. Table and column aliases
-are traced to physical source names when possible, with intermediate expressions
-shown as arrow-separated steps. When safe to do so, the app also uses the current
-ClickHouse analyzer to resolve uncertain output columns.
-This may differ from settings in effect when the view was created. Server analysis
-is restricted to supported query scopes without function calls or scalar
-subqueries, a matching current database, and local supported table engines;
-otherwise static analysis remains in use. Query-tree output varies by ClickHouse
-version, and unrecognized or incomplete trees are left unresolved.
-Simple `SELECT *` inside a CTE or FROM subquery can be traced when a single
-physical source and its column metadata are available. Wildcards over multiple
-inputs, wildcard modifiers and settings-dependent columns remain uncertain.
-
-The diagram refreshes rates approximately every 5 seconds. Completed-interval histories are cached for up to 20 seconds and MV status for up to 30 seconds to limit repeated scans of system logs. Rates are local-node
-averages over the preceding 60 seconds, derived from asynchronously flushed
-system logs, so they can lag and undercount (including when query logging is
-sampled). Metrics use blue for `read` and `inserted`, and amber for `write` and
-target `total`. Table `inserted` rates count rows in successful `NewPart` events from
-`system.part_log`; they cover MergeTree tables and include all writers to the
-table, not only the selected view. The target displays both this total rate and
-the selected MV's write rate; either can be unavailable independently. MV `read/write` rates come from successful
-executions in `system.query_views_log`; reads can include JOIN inputs. The
-internal target of a view without `TO` does not have a separate table rate.
-
-Next to MV read/write and target total, a five-bar chart shows observed rows in
-five completed calendar intervals, oldest on the left. Press `p` to switch between five 1-minute, 5-minute or 1-hour intervals; the current partial interval is excluded. The displayed time range is anchored to ClickHouse server time, and history cache entries do not cross interval boundaries. Press `s` to switch overview charts between individual scales and shared scales for read, write and target totals separately. The overview header shows the shared maxima in rows per interval. A dot means no event was observed in that interval; `0` means an event reported zero rows. Missing events can also result from disabled, sampled or delayed logging. The charts
-use the same local-node successful MV events and successful `NewPart` events as
-the rates; they do not include other cluster nodes, failed view executions or
-replica part downloads. Target totals include all observed writers.
-
-The overview and MV detail show observed execution status on the connected node. Press `w` to switch the error window between 24 hours, 1 hour and 7 days; press `e` to inspect up to 50 logged MV errors, then Enter to open the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
-
-The initial screen is a flow overview for every MV in the selected database; press `o` to switch between it and the selected MV. The compact overview uses `[T]` for an inferred trigger, `[I]` for another input, `R`/`W` for MV read/write rates, and `ok`/`err` for observed MV status in the selected error window. Rates are rows/s; charts show rows per completed interval. Full timestamps and diagnostics remain available in the MV detail and error screens. Views
-that write to the same target are grouped and connect to one target. Each MV
-uses a line for each input, with its rate directly below it; the MV and its
-rates appear alongside the first input. Multiple inputs connect to the same
-MV. When the trigger is known, other inputs and their rates are indented; when
-it is unknown, all inputs remain at the same level. The
-target's total rate is shown directly below the target. Inputs may be repeated
-for different views. Sources are bold, MV names italic, and targets regular;
-the terminal and font determine whether these styles are visible. Each target
-group has its own color, including its inputs and
-views. Colors remain stable when filtering; with more than eight groups the
-palette repeats, and refreshing after schema changes can reassign colors.
-Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `→` to select its target, then `Enter` to open the target table; `↑` / `↓` move between target groups and `←` returns focus to the MV. Moving the mouse over a flow or target selects it; click the selected item to open it. The selected item is highlighted. Use `H` / `L`, Shift+arrow or Shift+mouse wheel for horizontal scrolling; page scrolling is also supported. The overview help stays at the top and shortcuts stay at the bottom while the diagram scrolls. Metrics are queried in
-batches and have the same local-node and log-delay limits described above.
-
-Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. For a flow with multiple inputs, choose the desired table from the list. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
-
-Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters. Press `Ctrl+X` in search to clear active filters while keeping the search query.
-
-Press `f` to filter views by source and/or target tables. The lists are built
-from all discovered views in the current database. Use Tab or click the Source and Target tabs to switch lists;
-arrows or the mouse wheel to navigate, and Space or a click to toggle tables. Press `/` to search the current table list, type a name, then press Enter or Esc to leave search editing. The selected table names and the number of MVs matching the draft selection are shown before applying it.
-Multiple choices within one list match any selected table; when both lists have
-choices, a view must match both. Enter applies the selection; Ctrl+X clears both,
-and Esc cancels. `(any table)` selects all entries in the current list; select
-it again to clear that list. An empty selection applies no restriction for that
-list. Selecting all entries matches only those inferred table names, so views
-without a recognized table in that list may be excluded. Identical table names from
-different databases include their database in the list. The filter applies to
-the list and overview and remains active when switching databases. Filtering
-uses the SQL-inferred relationships described above; complex SQL or internal
-targets may therefore not be matched.
-
-When filters are active, the overview title shows the selected source and target
-tables (or `any` for an unrestricted side). Names include their database; if
-space is limited, names are shortened and `+N` indicates additional selections.
-In narrow terminals the labels are abbreviated to `S` and `T`. Press `f` to
-inspect or change the complete selection.
-
-Both system logs must be configured and readable by the user. View logging
-also requires `log_query_views` for the queries that execute the view. Diagnostics distinguish unsupported engines, unavailable metadata, log query errors and no observed events. No observed events still cannot distinguish inactivity from disabled, sampled or delayed logging. Errors appear below the diagram. Metrics
-in the diagrams cover the connected server only; the separate node survey reports its cluster coverage explicitly.
-
-## Read-only cluster test
-
-Pull requests run the Go test suite, cross-platform release builds and a Docker
-demo smoke test in GitHub Actions. The demo job checks the data and logs on all
-three nodes, runs the ClickHouse-local query tests, builds the TUI image and
-opens it against the replica. The separate disposable cluster fixture described
-below is not run by this workflow.
-
-The optional cluster integration check is intended for a disposable test cluster with at least two nodes. Set `CHINSPECTOR_TEST_CLUSTER_URL` in the environment and `CHINSPECTOR_TEST_CLUSTER_NAME` to the configured cluster, then run:
-
-```sh
-go test ./internal/clickhouse -run '^TestClusterSurveyIntegration$' -v
-```
-
-The test uses the existing credentials to discover and contact nodes and checks read access to the two system logs. It does not insert data or flush logs. It verifies connectivity and coverage only; it does not establish logical deduplication or validate cluster-wide aggregation. Do not put credentials in command-line arguments or commit them.
-
-## Keys
-
-- `↑` / `↓` or `j` / `k`: select a view
-- `b`: choose a database; use `↑` / `↓` and `Enter` to switch, `Esc` to cancel
-- `/`: search visible sources, MVs and targets
-- `f`: edit source and target table filters
-- `e`: inspect recent MV errors; `w`: change their observation window
-- `g`: inspect inferred table dependencies
-- `t`: inspect the selected MV target table
-- `n`: select a discovered native TCP node
-- `p`: change chart interval; `s`: switch overview chart scale
-- `o`: switch between the overview and selected MV; `Enter` opens the selected MV
-- `r`: reload view metadata
-- `d`: switch between the diagram and SQL definition
-- `v`: switch formatted and original SQL while viewing a definition
-- `c`: switch between the diagram and column flow in the detailed view
-- `Page Up` / `Page Down`: scroll the current detail panel
-- `←` / `→` or `h` / `l`: select MV or target in overview; scroll detail horizontally
-- `H` / `L` or Shift + `←` / `→`: scroll overview horizontally
-- `q` or `Ctrl+C`: quit
-
-Mouse support depends on the terminal. Click an MV in the list to select it,
-or hover over a flow or target in the overview and click to open it.
-Click a database in the database selector to switch. The bracketed actions in
-the footer are clickable. The wheel scrolls the area under the pointer: it
-moves the selection over the MV list and scrolls the diagram or SQL elsewhere.
-Use horizontal wheel scrolling, or Shift + wheel when supported, to scroll
-horizontally. Hold Shift while selecting text if your terminal supports that
-override for mouse capture.
-
-## Release artifacts
-
-Publishing a GitHub release for a tag containing the release workflow builds
-and attaches archives for Linux, macOS and Windows on amd64 and arm64, plus a
-`SHA256SUMS` file. Each archive contains the executable, README, project license
-and notices for its Go dependencies. The binaries are not signed or notarized.
-
-Release builds can be reproduced and checked locally:
-
-```sh
-python3 scripts/build_release.py /tmp/chinspector-dist
-python3 tests/release/check_archives.py /tmp/chinspector-dist
-```
-
-Use an empty output directory. The release workflow will not overwrite existing
-assets; remove conflicting assets before rerunning a partially completed release.
+- [Usage, connection options and navigation](docs/usage.md)
+- [Metrics, logs and cluster surveys](docs/metrics.md)
+- [Target columns and column lineage](docs/lineage.md)
+- [Docker demo](docs/demo.md)
+- [Development, tests and release artifacts](docs/development.md)
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)
