@@ -21,6 +21,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Run tests
         run: go test -count=1 ./...
+      - name: Test package manager manifests
+        run: python3 -m unittest discover -s tests/release -p 'test_*.py'
 
   demo:
     name: Demo smoke test

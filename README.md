@@ -26,6 +26,22 @@ sudo dnf install ./ch_insp_VERSION_amd64.rpm   # Fedora / RHEL
 Replace `VERSION` and `amd64` with the downloaded version and architecture.
 These are standalone packages; updates require downloading a new release.
 
+Once the package repositories are published, install on macOS or Linux with Homebrew:
+
+```sh
+brew install renatko/tap/ch-insp
+```
+
+On Windows with Scoop:
+
+```powershell
+scoop bucket add renatko https://github.com/renatko/scoop-bucket
+scoop install renatko/ch-insp
+```
+
+The executable is named `ch_insp`. To update it, use `brew upgrade ch-insp` or
+`scoop update ch-insp`.
+
 To build from source, install Go 1.27.3 or newer:
 
 ```sh

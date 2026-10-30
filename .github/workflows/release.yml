@@ -35,3 +35,57 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/chinspector-release/"*
+
+  package-managers:
+    name: Update Homebrew and Scoop
+    needs: release
+    if: ${{ vars.PACKAGE_MANAGERS_ENABLED == 'true' && !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: package-managers
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate manifests for the latest release
+        id: generate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          latest=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
+          if [ "$latest" != "$RELEASE_TAG" ]; then
+            echo "Skipping $RELEASE_TAG: latest release is $latest"
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh release download "$RELEASE_TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          python3 scripts/package_managers.py "$RELEASE_TAG" "$GH_REPO" "$RUNNER_TEMP/SHA256SUMS" "$RUNNER_TEMP/manifests"
+          echo 'publish=true' >> "$GITHUB_OUTPUT"
+      - name: Publish tap and bucket
+        if: steps.generate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_MANAGERS_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          test -n "$GH_TOKEN" || { echo 'PACKAGE_MANAGERS_TOKEN is required' >&2; exit 1; }
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          gh auth setup-git
+          for repo in homebrew-tap scoop-bucket; do
+            gh repo clone "${GITHUB_REPOSITORY_OWNER}/$repo" "$RUNNER_TEMP/$repo"
+            if [ "$repo" = homebrew-tap ]; then
+              mkdir -p "$RUNNER_TEMP/$repo/Formula"
+              cp "$RUNNER_TEMP/manifests/Formula/ch-insp.rb" "$RUNNER_TEMP/$repo/Formula/"
+            else
+              mkdir -p "$RUNNER_TEMP/$repo/bucket"
+              cp "$RUNNER_TEMP/manifests/bucket/ch-insp.json" "$RUNNER_TEMP/$repo/bucket/"
+            fi
+            git -C "$RUNNER_TEMP/$repo" add .
+            if ! git -C "$RUNNER_TEMP/$repo" diff --cached --quiet; then
+              git -C "$RUNNER_TEMP/$repo" commit -m "Update ch-insp to $RELEASE_TAG"
+              git -C "$RUNNER_TEMP/$repo" push
+            fi
+          done

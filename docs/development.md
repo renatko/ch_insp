@@ -40,6 +40,29 @@ Use an empty output directory and a semantic version matching the release tag
 (with or without a leading `v`). The release workflow will not overwrite existing
 assets; remove conflicting assets before rerunning a partially completed release.
 
+## Homebrew and Scoop publishing
+
+Package distribution requires this project and its release assets to be public.
+Create public GitHub repositories `renatko/homebrew-tap` and
+`renatko/scoop-bucket`, each initialized with a default branch. Give a
+fine-grained personal access token **Contents: read and write** access to only
+those two repositories, and save it as the `PACKAGE_MANAGERS_TOKEN` Actions
+secret in this repository. Set the Actions repository variable
+`PACKAGE_MANAGERS_ENABLED` to `true` to enable publication.
+
+After a stable release's assets are uploaded, the release workflow generates
+`Formula/ch-insp.rb` and `bucket/ch-insp.json` from that release's checksums,
+then commits them to the respective repositories. Prereleases do not update the
+package repositories. The initial publication happens with the next stable
+release whose tag contains this workflow; rerunning the package-manager job is
+safe if publication was only partially successful. Remove the variable to
+disable publication. The workflow's regular `GITHUB_TOKEN` cannot write to the
+other repositories.
+
+The generated Homebrew formula uses the macOS and Linux archives; Scoop uses
+Windows archives. Each installer checks the SHA-256 recorded in its manifest.
+The repository and release archives must be publicly accessible to users.
+
 ## Record the demo GIF
 
 On macOS or Linux, the recording script builds the TUI, connects to the local
