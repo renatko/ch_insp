@@ -32,6 +32,12 @@ export CLICKHOUSE_URL='clickhouse://default@localhost:9000/demo'
 ./ch_insp
 ```
 
+Or pass connection options explicitly:
+
+```sh
+./ch_insp --host localhost --port 9000 --user default --database demo
+```
+
 For credentials, prefer the environment variable over command-line arguments, which may be visible in process listings and shell history. See [connection options](docs/usage.md#connecting-and-offline-mode) for TLS, precedence and defaults.
 
 To explore a local SQL dump without a ClickHouse server, use `./ch_insp --schema /path/to/schema.sql`. From a source checkout, you can try the included example:
