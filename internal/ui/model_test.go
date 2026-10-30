@@ -73,7 +73,7 @@ func TestDiagramDisplaysMeasuredRatesAndMissingData(t *testing.T) {
 	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
 	rates := clickhouse.Rates{Tables: map[string]float64{"db.source": 12.5}, MVAvailable: true, MVRead: 10, MVWritten: 4}
 	joined := strings.Join(diagramLines(view, rates, true), "\n")
-	for _, want := range []string{"inserted: 12.5 rows/s", "read 10.0 rows/s / write 4.0 rows/s", "MV: 4.0 rows/s", "total: no data"} {
+	for _, want := range []string{"inserted: 12.5 rows/s", "read 10.0 rows/s", "write 4.0 rows/s", "MV: 4.0 rows/s", "total: no data"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("diagram missing %q:\n%s", want, joined)
 		}
@@ -83,14 +83,35 @@ func TestDiagramDisplaysMeasuredRatesAndMissingData(t *testing.T) {
 func TestTargetShowsIndependentRates(t *testing.T) {
 	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
 	rates := clickhouse.Rates{Tables: map[string]float64{"db.dst": 25}, MVAvailable: true, MVWritten: 4}
-	joined := strings.Join(diagramLines(view, rates, true), "\n")
-	if !strings.Contains(joined, "MV: 4.0 rows/s · total: 25.0 rows/s") {
-		t.Fatalf("target rates missing: %s", joined)
+	lines := diagramLines(view, rates, true)
+	if !strings.Contains(lines[4], "MV: 4.0 rows/s") || !strings.Contains(lines[5], "total: 25.0 rows/s") || strings.Index(lines[4], "MV:") != strings.Index(lines[5], "total:") {
+		t.Fatalf("target rates should be stacked and aligned: %v", lines)
 	}
 	rates.MVAvailable = false
-	joined = strings.Join(diagramLines(view, rates, true), "\n")
-	if !strings.Contains(joined, "MV: no data · total: 25.0 rows/s") {
-		t.Fatalf("target rates should be independent: %s", joined)
+	lines = diagramLines(view, rates, true)
+	if !strings.Contains(lines[4], "MV: no data") || !strings.Contains(lines[5], "total: 25.0 rows/s") {
+		t.Fatalf("target rates should be independent: %v", lines)
+	}
+}
+
+func TestDiagramStacksViewMetrics(t *testing.T) {
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source"}
+	rates := clickhouse.Rates{MVAvailable: true, MVRead: 10, MVWritten: 4}
+	lines := diagramLines(view, rates, true)
+	if !strings.Contains(lines[4], "read 10.0 rows/s") || !strings.Contains(lines[5], "write 4.0 rows/s") || strings.Index(lines[4], "read ") != strings.Index(lines[5], "write ") {
+		t.Fatalf("view rates should be stacked and aligned: %v", lines)
+	}
+}
+
+func TestDiagramStacksMetricsWithMultipleSources(t *testing.T) {
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM source JOIN lookup ON source.id = lookup.id"}
+	rates := clickhouse.Rates{MVAvailable: true, MVRead: 10, MVWritten: 4, Tables: map[string]float64{"db.dst": 25}}
+	lines := diagramLines(view, rates, true)
+	joined := strings.Join(lines, "\n")
+	for _, want := range []string{"source", "lookup", "read 10.0 rows/s", "write 4.0 rows/s", "MV: 4.0 rows/s", "total: 25.0 rows/s"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("diagram missing %q: %s", want, joined)
+		}
 	}
 }
 

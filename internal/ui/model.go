@@ -1472,6 +1472,7 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 			mvMetric += " · " + mutedStyle.Render(label)
 		}
 	}
+	mvMetric = strings.Replace(mvMetric, " / ", "\n", 1)
 	mv := diagramBox("MATERIALIZED VIEW", view.Name, mvMetric, 0, 0, true, mvColor)
 	targetMV := "MV: no data"
 	targetValue, targetAvailable := rates.Tables[flow.Target]
@@ -1491,13 +1492,17 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 	} else if rates.MVAvailable {
 		targetMV = fmt.Sprintf("MV: %.1f rows/s", rates.MVWritten)
 	}
-	target := diagramBox("TARGET", shortName(flow.Target), writeMetricStyle.Render(targetMV)+" · "+targetTotal, 0, 0, false, targetColor)
-	total := len(sources) * 5
+	target := diagramBox("TARGET", shortName(flow.Target), writeMetricStyle.Render(targetMV)+"\n"+targetTotal, 0, 0, false, targetColor)
 	middle := (len(sources)/2)*5 + 2
 	top := middle - 2
+	total := maxInt(len(sources)*5, top+maxInt(len(mv), len(target)))
 	lines := make([]string, total)
 	for row := 0; row < total; row++ {
-		box := diagramBox("QUERY INPUT", sourceLabel(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceColor)
+		left := strings.Repeat(" ", sourceColumnWidth)
+		if row < len(sources)*5 {
+			box := diagramBox("QUERY INPUT", sourceLabel(sources[row/5]), rate(sources[row/5]), sourceWidth, sourceColumnWidth, true, sourceColor)
+			left = box[row%5]
+		}
 		branch := "     "
 		if len(sources) == 1 && row == middle {
 			branch = "────▶"
@@ -1520,15 +1525,22 @@ func diagramFlowLinesStyled(view clickhouse.View, rates clickhouse.Rates, ready,
 				branch = "  │  "
 			}
 		}
-		line := box[row%5] + lineColor.Render(branch)
-		if row >= top && row < top+5 {
+		line := left + lineColor.Render(branch)
+		if row >= top && row < top+maxInt(len(mv), len(target)) {
 			connector := "     "
 			if row == middle {
 				connector = "────▶"
 			}
-			line += mv[row-top]
+			if row-top < len(mv) {
+				line += mv[row-top]
+			} else {
+				line += strings.Repeat(" ", lipgloss.Width(mv[0]))
+			}
 			if includeTarget {
-				line += lineColor.Render(connector) + target[row-top]
+				line += lineColor.Render(connector)
+				if row-top < len(target) {
+					line += target[row-top]
+				}
 			}
 		}
 		lines[row] = line
@@ -1545,20 +1557,27 @@ func shortName(name string) string {
 
 func diagramBox(label, name, metric string, width, columnWidth int, outgoing bool, style lipgloss.Style) []string {
 	width = maxInt(width, maxInt(lipgloss.Width(label), lipgloss.Width(name)))
-	columnWidth = maxInt(columnWidth, maxInt(width+4, lipgloss.Width(metric)))
+	metrics := strings.Split(metric, "\n")
+	columnWidth = maxInt(columnWidth, width+4)
+	for _, line := range metrics {
+		columnWidth = maxInt(columnWidth, lipgloss.Width(line))
+	}
 	pad := func(s string) string { return s + strings.Repeat(" ", maxInt(0, width-lipgloss.Width(s))) }
 	gap := columnWidth - width - 4
 	lineGap := strings.Repeat(" ", gap)
 	if outgoing {
 		lineGap = strings.Repeat("─", gap)
 	}
-	return []string{
+	lines := []string{
 		style.Render("╭─"+strings.Repeat("─", width)+"─╮") + strings.Repeat(" ", gap),
 		style.Render("│ "+pad(label)+" │") + strings.Repeat(" ", gap),
 		style.Bold(true).Render("│ "+pad(name)+" │") + mutedStyle.Render(lineGap),
 		style.Render("╰─"+strings.Repeat("─", width)+"─╯") + strings.Repeat(" ", gap),
-		mutedStyle.Render(metric) + strings.Repeat(" ", maxInt(0, columnWidth-lipgloss.Width(metric))),
 	}
+	for _, line := range metrics {
+		lines = append(lines, mutedStyle.Render(line)+strings.Repeat(" ", maxInt(0, columnWidth-lipgloss.Width(line))))
+	}
+	return lines
 }
 
 func truncate(value string, width int) string {
