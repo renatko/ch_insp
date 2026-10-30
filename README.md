@@ -22,7 +22,7 @@ For the cluster, run the TUI on the Docker network so that both advertised node 
 docker compose -f demo/compose.yaml --profile tui run --build --rm tui
 ```
 
-Press `o` for the flow overview. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
+The flow overview opens at startup. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
 
 The `demo` database has 16 materialized views with branching and shared targets:
 
@@ -88,6 +88,8 @@ The header shows the connected node and ClickHouse server version. Press `n` to 
 
 Cluster counts are sums of physical events reported by nodes, not deduplicated logical inserts: `NewPart` includes source, target and other tables in the database, while MV read/write counts include successful materialized view executions. Replica downloads are excluded. Distributed queries, replicated tables, multiple views, duplicate addresses advertised under different names, server clock skew, and disabled, delayed or sampled logs can make these numbers differ from logical flow. A zero means no rows were observed in the available logs, not proof of inactivity. The diagram and its histories continue to show only the connected node; they are not mixed with the survey.
 
+The overview stays in the background while details and selectors open in a centered panel. Filters, search and selection use compact panels; diagrams, SQL, column flow, targets, dependencies and errors use a wider panel with seven columns of margin on each side. The frame shows the navigation path; detail titles stay visible while scrolling. Press `Esc` to return to the previous view; on small terminals screens use the available space directly. Mouse clicks and scrolling apply to the open panel.
+
 The initial database is the connection's current database. Press `b` to choose
 another database, including one with no materialized views. The active database
 is shown in the header; names in the list and diagram are unqualified. A view
@@ -99,7 +101,7 @@ target after `TO` in the stored SQL. Complex expressions, table functions,
 aliases and other SQL constructs may not be resolved completely. Sources are
 query inputs, not necessarily insert triggers: for incremental materialized
 views a joined table does not trigger the view when it receives inserts. The diagram marks the leftmost physical input of a supported incremental MV, including simple CTEs and subqueries as `[trigger]` and other query inputs as `[input]`; unsupported or refreshable definitions show `trigger unknown`. These roles are inferred from SQL. A
-view without `TO` uses internal storage. Check the SQL definition with `d`.
+view without `TO` uses internal storage. Check the SQL definition with `d`. The SQL viewer adds line breaks to parser-supported definitions; press `v` to switch between formatted and original text. Unsupported definitions are shown as originally received. Formatting never changes or executes the definition.
 
 Press `t` (or click **target**) from a selected MV or the overview to inspect its target table. The target screen shows a compact list of target columns and matching materialized views. Use ↑/↓ or click a column to show its expressions and source columns below; PgUp/PgDn or the mouse wheel scrolls the details. Click a view in the left panel to inspect a different target. Long types are shortened in the list; the selected column shows the full target type and, when known and different, the MV schema type alongside it. Different types do not necessarily imply an error. On narrow screens the list shows a count of matching views when their names do not fit. It considers visible MVs across databases, independently of the current filters. Columns without an identified MV output and their defaults are shown too. These are potential mappings inferred from definitions, not observed writes: direct inserts, inaccessible views and unsupported SQL can make the picture incomplete. Press `t` again to return. Views without an explicit `TO` have internal storage and do not have a separate target table to inspect.
 
@@ -163,9 +165,12 @@ replica part downloads. Target totals include all observed writers.
 
 The overview and MV detail show observed execution status on the connected node. Press `w` to switch the error window between 24 hours, 1 hour and 7 days; press `e` to inspect up to 50 logged MV errors, then Enter to open the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
 
-Press `o` to open a flow overview for every MV in the selected database. The compact overview uses `[T]` for an inferred trigger, `[I]` for another input, `R`/`W` for MV read/write rates, and `ok`/`err` for observed MV status in the selected error window. Rates are rows/s; charts show rows per completed interval. Full timestamps and diagnostics remain available in the MV detail and error screens. Views
+The initial screen is a flow overview for every MV in the selected database; press `o` to switch between it and the selected MV. The compact overview uses `[T]` for an inferred trigger, `[I]` for another input, `R`/`W` for MV read/write rates, and `ok`/`err` for observed MV status in the selected error window. Rates are rows/s; charts show rows per completed interval. Full timestamps and diagnostics remain available in the MV detail and error screens. Views
 that write to the same target are grouped and connect to one target. Each MV
-occupies two lines: the flow, then rates directly below its inputs and MV. The
+uses a line for each input, with its rate directly below it; the MV and its
+rates appear alongside the first input. Multiple inputs connect to the same
+MV. When the trigger is known, other inputs and their rates are indented; when
+it is unknown, all inputs remain at the same level. The
 target's total rate is shown directly below the target. Inputs may be repeated
 for different views. Sources are bold, MV names italic, and targets regular;
 the terminal and font determine whether these styles are visible. Each target
@@ -177,11 +182,11 @@ batches and have the same local-node and log-delay limits described above.
 
 Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. For a flow with multiple inputs, choose the desired table from the list. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
 
-Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters.
+Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters. Press `Ctrl+X` in search to clear active filters while keeping the search query.
 
 Press `f` to filter views by source and/or target tables. The lists are built
-from all discovered views in the current database. Use Tab to switch lists,
-arrows or the mouse wheel to navigate, and Space or a click to toggle tables.
+from all discovered views in the current database. Use Tab or click the Source and Target tabs to switch lists;
+arrows or the mouse wheel to navigate, and Space or a click to toggle tables. Press `/` to search the current table list, type a name, then press Enter or Esc to leave search editing. The selected table names and the number of MVs matching the draft selection are shown before applying it.
 Multiple choices within one list match any selected table; when both lists have
 choices, a view must match both. Enter applies the selection; Ctrl+X clears both,
 and Esc cancels. `(any table)` selects all entries in the current list; select
@@ -192,6 +197,12 @@ different databases include their database in the list. The filter applies to
 the list and overview and remains active when switching databases. Filtering
 uses the SQL-inferred relationships described above; complex SQL or internal
 targets may therefore not be matched.
+
+When filters are active, the overview title shows the selected source and target
+tables (or `any` for an unrestricted side). Names include their database; if
+space is limited, names are shortened and `+N` indicates additional selections.
+In narrow terminals the labels are abbreviated to `S` and `T`. Press `f` to
+inspect or change the complete selection.
 
 Both system logs must be configured and readable by the user. View logging
 also requires `log_query_views` for the queries that execute the view. Diagnostics distinguish unsupported engines, unavailable metadata, log query errors and no observed events. No observed events still cannot distinguish inactivity from disabled, sampled or delayed logging. Errors appear below the diagram. Metrics
@@ -221,6 +232,7 @@ The test uses the existing credentials to discover and contact nodes and checks 
 - `o`: switch between the overview and selected MV; `Enter` opens the selected MV
 - `r`: reload view metadata
 - `d`: switch between the diagram and SQL definition
+- `v`: switch formatted and original SQL while viewing a definition
 - `c`: switch between the diagram and column flow in the detailed view
 - `Page Up` / `Page Down`: scroll the current detail panel
 - `←` / `→` or `h` / `l`: select MV or target in overview; scroll detail horizontally

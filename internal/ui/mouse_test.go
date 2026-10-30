@@ -17,7 +17,10 @@ func TestMouseSelectsVisibleNodeAfterClusterSurvey(t *testing.T) {
 		nodes[i] = clickhouse.Node{Cluster: "c", Host: fmt.Sprintf("host-%02d", i), Port: 9000}
 	}
 	m := model{width: 120, height: 20, choosingNode: true, nodes: nodes, nodeCursor: 8, nodeSurvey: &clickhouse.ClusterSurvey{Database: "db", Total: 10}}
-	first := 8 - m.nodeListVisible() + 1
+	_, _, width, height := m.modalGeometry()
+	inner := m
+	inner.width, inner.height = width-2, height
+	first := 8 - inner.nodeListVisible() + 1
 	next, _ := m.Update(mouseAtText(t, m, nodes[first].Host))
 	if got := next.(model).nodeCursor; got != first {
 		t.Fatalf("clicked visible node %d, selected %d", first, got)
@@ -101,7 +104,7 @@ func TestMouseWheelScrollsAreaAndHorizontal(t *testing.T) {
 		t.Fatal("horizontal scroll did not move")
 	}
 	wheel.Shift = false
-	wheel.X = 2
+	wheel.X = mouseAtText(t, m, "second").X
 	next, _ = m.Update(wheel)
 	if next.(model).selected != 1 {
 		t.Fatal("list wheel did not change selection")
@@ -180,6 +183,109 @@ func TestOverviewMouseHoverSelectsFlowAndTargetWithoutOpening(t *testing.T) {
 	}
 }
 
+func TestOverviewMouseSelectsAdditionalSource(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "joined", Definition: "CREATE MATERIALIZED VIEW joined TO dst AS SELECT * FROM events JOIN lookup ON 1"}, {Database: "db", Name: "other", Definition: "CREATE MATERIALIZED VIEW other TO dst AS SELECT * FROM src"}}
+	m := model{width: 120, height: 30, database: "db", overview: true, selected: 1, views: views, allViews: views}
+	move := mouseAtText(t, m, "lookup")
+	move.Action, move.Button = tea.MouseActionMotion, tea.MouseButtonNone
+	next, _ := m.Update(move)
+	m = next.(model)
+	if m.selected != 0 || !m.overview {
+		t.Fatal("hover did not select the flow through its additional input")
+	}
+	next, _ = m.Update(mouseAtText(t, m, "lookup"))
+	if next.(model).overview {
+		t.Fatal("clicking the selected additional input did not open the flow")
+	}
+}
+
+func TestOverviewHoverCoversMetricsToRightOfMVName(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "other", Definition: "CREATE MATERIALIZED VIEW other TO dst AS SELECT * FROM src"}, {Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM src"}}
+	m := model{width: 150, height: 30, database: "db", overview: true, overviewReady: true, views: views, allViews: views, overviewRates: clickhouse.OverviewRates{
+		Views:    map[string]clickhouse.ViewRate{"db.mv": {Read: 3.7, Written: 0.3}},
+		Statuses: map[string]clickhouse.ViewStatus{"db.mv": {Errors: 7}},
+	}}
+	move := mouseAtText(t, m, "err 7")
+	move.Action, move.Button = tea.MouseActionMotion, tea.MouseButtonNone
+	next, _ := m.Update(move)
+	m = next.(model)
+	if m.selected != 1 || m.overviewTargetFocus || !m.overview {
+		t.Fatal("hovering over MV status did not select its flow")
+	}
+	lines, positions := m.overviewLines()
+	flow := ansi.Strip(lines[positions[1]])
+	arrow, length := overviewFlowArrow(flow)
+	nameEnd := arrow + length + strings.Index(flow[arrow+length:], "mv") + len("mv")
+	branch := strings.Index(flow[nameEnd:], " ──")
+	if branch < 0 {
+		t.Fatalf("target branch missing: %q", flow)
+	}
+	m.selected = 0
+	paddingX := lipgloss.Width(flow[:nameEnd]) + 1
+	next, _ = m.Update(tea.MouseMsg{X: paddingX, Y: positions[1] + 2, Action: tea.MouseActionMotion, Button: tea.MouseButtonNone})
+	if next.(model).selected != 1 {
+		t.Fatal("hovering in the MV column after its name should select the flow")
+	}
+	branchX := lipgloss.Width(flow[:nameEnd+branch]) + 1
+	next, _ = m.Update(tea.MouseMsg{X: branchX, Y: positions[1] + 2, Action: tea.MouseActionMotion, Button: tea.MouseButtonNone})
+	if next.(model).selected != 0 {
+		t.Fatal("hovering over a target branch should not select the MV")
+	}
+}
+
+func TestOverviewHoverAndClickUseSameRegions(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "joined", Definition: "CREATE MATERIALIZED VIEW joined TO sink_x AS SELECT * FROM click_src JOIN secondary ON 1"},
+		{Database: "db", Name: "other", Definition: "CREATE MATERIALIZED VIEW other TO sink_y AS SELECT * FROM elsewhere"},
+	}
+	m := model{width: 140, height: 30, database: "db", overview: true, overviewReady: true, selected: 1, views: views, allViews: views, overviewRates: clickhouse.OverviewRates{
+		Tables:   map[string]float64{"db.click_src": 12, "db.secondary": 3, "db.sink_x": 123.4},
+		Views:    map[string]clickhouse.ViewRate{"db.joined": {Read: 3.7, Written: 0.3}},
+		Statuses: map[string]clickhouse.ViewStatus{"db.joined": {Errors: 7}},
+	}}
+	lines, positions := m.overviewLines()
+	findColumn := func(line int, text string, offset int) int {
+		plain := ansi.Strip(lines[line])
+		i := strings.Index(plain, text)
+		if i < 0 {
+			t.Fatalf("missing %q: %q", text, plain)
+		}
+		return lipgloss.Width(plain[:i]) + offset
+	}
+	start := positions[0]
+	for _, tc := range []struct {
+		name   string
+		row, x int
+		target bool
+	}{
+		{"source", start, findColumn(start, "click_src", 0), false},
+		{"source metric", start + 1, findColumn(start+1, "inserted: 12.0", 5), false},
+		{"MV", start, findColumn(start, "joined", 0), false},
+		{"MV read", start + 1, findColumn(start+1, "R ", 1), false},
+		{"MV write", start + 1, findColumn(start+1, "W ", 1), false},
+		{"MV status", start + 1, findColumn(start+1, "err 7", 4), false},
+		{"additional source", start + 2, findColumn(start+2, "secondary", 0), false},
+		{"additional metric", start + 3, findColumn(start+3, "inserted: 3.0", 5), false},
+		{"target", start, findColumn(start, "sink_x", 0), true},
+		{"target metric", start + 1, findColumn(start+1, "total: 123.4", 10), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			move := tea.MouseMsg{X: tc.x, Y: tc.row + 2, Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}
+			next, _ := m.Update(move)
+			got := next.(model)
+			if got.selected != 0 || got.overviewTargetFocus != tc.target {
+				t.Fatalf("hover selected %d target=%v", got.selected, got.overviewTargetFocus)
+			}
+			move.Action, move.Button = tea.MouseActionPress, tea.MouseButtonLeft
+			next, _ = m.Update(move)
+			got = next.(model)
+			if got.selected != 0 || got.overviewTargetFocus != tc.target {
+				t.Fatalf("click selected %d target=%v", got.selected, got.overviewTargetFocus)
+			}
+		})
+	}
+}
+
 func TestOverviewMouseHoverWithScrollOffsets(t *testing.T) {
 	views := []clickhouse.View{{Database: "db", Name: "first_long_mv", Definition: "CREATE MATERIALIZED VIEW first_long_mv TO first_destination AS SELECT * FROM source"}, {Database: "db", Name: "second_long_mv", Definition: "CREATE MATERIALIZED VIEW second_long_mv TO second_destination AS SELECT * FROM source"}}
 	m := model{width: 35, height: 10, database: "db", overview: true, views: views, allViews: views, selected: 1, overviewTargetFocus: true}
@@ -192,6 +298,23 @@ func TestOverviewMouseHoverWithScrollOffsets(t *testing.T) {
 	m = next.(model)
 	if !m.overviewTargetFocus || m.selected != 1 {
 		t.Fatal("hover missed target in scrolled viewport")
+	}
+}
+
+func TestOverviewHoverMetricsWithScrollOffsets(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "first_mv", Definition: "CREATE MATERIALIZED VIEW first_mv TO first_dst AS SELECT * FROM source"}, {Database: "db", Name: "second_mv", Definition: "CREATE MATERIALIZED VIEW second_mv TO second_dst AS SELECT * FROM source"}}
+	m := model{width: 45, height: 10, database: "db", overview: true, overviewReady: true, selected: 1, views: views, allViews: views, overviewRates: clickhouse.OverviewRates{
+		Views:    map[string]clickhouse.ViewRate{"db.second_mv": {Read: 3.7, Written: 0.3}},
+		Statuses: map[string]clickhouse.ViewStatus{"db.second_mv": {Errors: 7}},
+	}}
+	m.keepOverviewSelectionVisible()
+	m.overviewColumn = 24
+	move := mouseAtText(t, m, "err 7")
+	move.Action, move.Button = tea.MouseActionMotion, tea.MouseButtonNone
+	m.selected = 0
+	next, _ := m.Update(move)
+	if next.(model).selected != 1 || next.(model).overviewTargetFocus {
+		t.Fatal("hover missed MV metrics in a scrolled viewport")
 	}
 }
 

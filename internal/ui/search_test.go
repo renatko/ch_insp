@@ -90,3 +90,28 @@ func TestSearchRespectsVisibleViewsAndDistinctTargets(t *testing.T) {
 		t.Fatal("search exposed a filtered view")
 	}
 }
+
+func TestSearchCanClearFilters(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "a", Definition: "CREATE MATERIALIZED VIEW a TO dst AS SELECT * FROM src"}, {Database: "db", Name: "b", Definition: "CREATE MATERIALIZED VIEW b TO other AS SELECT * FROM hidden"}}
+	m := model{database: "db", overview: true, searching: true, allViews: views, filterSource: []string{"db.src"}, searchQuery: "hidden", overviewBusy: true}
+	m.filterViews()
+	m.searching = true
+	if !strings.Contains(m.renderSearch(100), "clear filters") || len(m.searchResults()) != 0 {
+		t.Fatal("filtered search did not explain empty result")
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlX})
+	m = next.(model)
+	if !m.searching || len(m.filterSource) != 0 || len(m.searchResults()) != 1 || m.searchQuery != "hidden" {
+		t.Fatal("clearing filters did not preserve the search")
+	}
+}
+
+func TestSearchRevealsAdditionalSource(t *testing.T) {
+	views := []clickhouse.View{{Database: "db", Name: "joined", Definition: "CREATE MATERIALIZED VIEW joined TO dst AS SELECT * FROM events JOIN users ON 1 JOIN regions ON 1"}}
+	m := model{width: 80, height: 10, database: "db", overview: true, searching: true, searchQuery: "regions", views: views, allViews: views, overviewReady: true}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(model)
+	if m.searching || !m.overview || !strings.Contains(m.View(), "regions [I]") {
+		t.Fatalf("additional source is not visible after search:\n%s", m.View())
+	}
+}

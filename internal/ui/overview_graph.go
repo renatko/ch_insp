@@ -89,10 +89,30 @@ func overviewGraph(views []clickhouse.View, rates clickhouse.OverviewRates, read
 	return overviewGraphFocused(views, rates, ready, selected, colors, false)
 }
 
+func overviewFlowArrow(line string) (int, int) {
+	for _, arrow := range []string{" ──▶ ", " ─┬▶ "} {
+		if i := strings.Index(line, arrow); i >= 0 {
+			return i, len(arrow)
+		}
+	}
+	return -1, 0
+}
+
+func overviewRowAtLine(views []clickhouse.View, positions []int, line int) (int, int) {
+	for i, start := range positions {
+		sources := maxInt(1, len(clickhouse.InferFlow(views[i]).Sources))
+		if line >= start && line < start+2*sources {
+			return i, line - start
+		}
+	}
+	return -1, 0
+}
+
 func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRates, ready bool, selected int, colors map[string]lipgloss.Color, targetFocus bool) ([]string, []int) {
 	type row struct {
-		index                                     int
-		inputs, inputStats, name, mvStats, status string
+		index                 int
+		inputs, inputStats    []string
+		name, mvStats, status string
 	}
 	type group struct {
 		target  string
@@ -130,13 +150,16 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			var names, stats []string
 			for _, source := range sources {
 				name := shortName(source)
+				indent := ""
 				if flow.Trigger != "" {
 					if source == flow.Trigger {
 						name += " [T]"
 					} else {
 						name += " [I]"
+						indent = "  "
 					}
 				}
+				name = indent + name
 				stat := "inserted: no data"
 				if !ready {
 					stat = "inserted: loading"
@@ -145,12 +168,11 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				} else if label := metricStateLabel(rates.TableDiagnostics[source]); label != "" {
 					stat = "inserted: " + compactMetricLabel(label)
 				}
-				stat = readMetricStyle.Render(stat)
+				stat = indent + readMetricStyle.Render(stat)
 				width := maxInt(lipgloss.Width(name), lipgloss.Width(stat))
 				names = append(names, name+strings.Repeat(" ", width-lipgloss.Width(name)))
 				stats = append(stats, stat+strings.Repeat(" ", width-lipgloss.Width(stat)))
 			}
-			inputs, inputStats := strings.Join(names, " + "), strings.Join(stats, "   ")
 			key := view.Database + "." + view.Name
 			rate, available := rates.Views[key]
 			var history *clickhouse.ViewHistory
@@ -174,14 +196,16 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 					statusText = mutedStyle.Render(summary)
 				}
 			}
-			inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(inputs), lipgloss.Width(inputStats)))
+			for n := range names {
+				inputWidth = maxInt(inputWidth, maxInt(lipgloss.Width(names[n]), lipgloss.Width(stats[n])))
+			}
 			if left, right, ok := strings.Cut(mvStats, " / "); ok {
 				readWidth = maxInt(readWidth, lipgloss.Width(left))
 				write, note, _ := strings.Cut(right, " · ")
 				writeWidth = maxInt(writeWidth, lipgloss.Width(write))
 				noteWidth = maxInt(noteWidth, lipgloss.Width(note))
 			}
-			group.rows = append(group.rows, row{index: i, inputs: inputs, inputStats: inputStats, name: view.Name, mvStats: mvStats, status: statusText})
+			group.rows = append(group.rows, row{index: i, inputs: names, inputStats: stats, name: view.Name, mvStats: mvStats, status: statusText})
 		}
 	}
 	pad := func(value string, width int) string {
@@ -252,7 +276,11 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 			case j == len(rows)-1:
 				branch = "──┘  "
 			}
-			line := marker + rowStyle.Bold(true).Render(pad(row.inputs, inputWidth)) + rowStyle.Render(" ─▶ ") + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
+			inputBranch := " ──▶ "
+			if len(row.inputs) > 1 {
+				inputBranch = " ─┬▶ "
+			}
+			line := marker + rowStyle.Bold(true).Render(pad(row.inputs[0], inputWidth)) + rowStyle.Render(inputBranch) + rowStyle.Italic(true).Render(pad(row.name, mvWidth)) + groupStyle.Render(" "+branch)
 			if j == center {
 				targetStyle := groupStyle
 				if targetSelected {
@@ -265,10 +293,18 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				line += " " + targetStyle.Render(name)
 			}
 			lines = append(lines, line)
-			stats := statsStyle.Render("  " + pad(row.inputStats, inputWidth) + "    " + pad(row.mvStats, mvWidth))
-			if row.index == selected && !targetFocus {
-				stats = restoreMetricBackground(stats)
+			inputLink := "     "
+			if len(row.inputs) > 1 {
+				inputLink = "  │  "
 			}
+			statsPart := func(text string) string {
+				result := statsStyle.Render(text)
+				if row.index == selected && !targetFocus {
+					result = restoreMetricBackground(result)
+				}
+				return result
+			}
+			stats := statsPart("  "+pad(row.inputStats[0], inputWidth)) + rowStyle.Render(inputLink) + statsPart(pad(row.mvStats, mvWidth))
 			if j < len(rows)-1 {
 				stats += groupStyle.Render("   │  ")
 			} else {
@@ -282,6 +318,26 @@ func overviewGraphFocused(views []clickhouse.View, rates clickhouse.OverviewRate
 				}
 			}
 			lines = append(lines, stats)
+			for source := 1; source < len(row.inputs); source++ {
+				link := " ─┤  "
+				if source == len(row.inputs)-1 {
+					link = " ─┘  "
+				}
+				extra := rowStyle.Render("  ") + rowStyle.Bold(true).Render(pad(row.inputs[source], inputWidth)) + rowStyle.Render(link+pad("", mvWidth))
+				if j < len(rows)-1 {
+					extra += groupStyle.Render("   │  ")
+				}
+				lines = append(lines, extra)
+				link = "     "
+				if source < len(row.inputs)-1 {
+					link = "  │  "
+				}
+				extraStats := statsPart("  "+pad(row.inputStats[source], inputWidth)) + rowStyle.Render(link) + statsPart(pad("", mvWidth))
+				if j < len(rows)-1 {
+					extraStats += groupStyle.Render("   │  ")
+				}
+				lines = append(lines, extraStats)
+			}
 		}
 		lines = append(lines, "")
 	}
@@ -383,6 +439,10 @@ func (m model) overviewTargets() []overviewTargetPosition {
 		groups[key] = append(groups[key], i)
 	}
 	var result []overviewTargetPosition
+	var totalMax uint64
+	if m.chartCommon {
+		_, _, totalMax = chartMaxima(m.views, m.overviewRates)
+	}
 	for _, key := range keys {
 		indices := groups[key]
 		target := clickhouse.InferFlow(m.views[indices[0]]).Target
@@ -400,7 +460,11 @@ func (m model) overviewTargets() []overviewTargetPosition {
 		if at < 0 {
 			continue
 		}
-		result = append(result, overviewTargetPosition{key: key, index: index, line: line, column: lipgloss.Width(plain[:at]), width: lipgloss.Width(name)})
+		value, available := m.overviewRates.Tables[target]
+		history, hasHistory := m.overviewRates.TableHistory[target]
+		total := compactTotalRate(m.overviewReady, value, available, history, hasHistory, totalMax, m.overviewRates.TableDiagnostics[target])
+		width := maxInt(lipgloss.Width(name), lipgloss.Width(total))
+		result = append(result, overviewTargetPosition{key: key, index: index, line: line, column: lipgloss.Width(plain[:at]), width: width})
 	}
 	return result
 }

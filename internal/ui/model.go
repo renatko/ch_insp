@@ -42,6 +42,7 @@ type columnsLoadedMsg struct {
 }
 
 type model struct {
+	modalInner                     bool
 	dsn                            string
 	schemaPath                     string
 	schemaDatabase                 string
@@ -73,6 +74,8 @@ type model struct {
 	draftTarget                    []string
 	filterField                    int
 	filterCursors                  [2]int
+	filterQuery                    [2]string
+	filterEditing                  bool
 	viewRevision                   int
 	views                          []clickhouse.View
 	selected                       int
@@ -81,6 +84,7 @@ type model struct {
 	width                          int
 	height                         int
 	definition                     bool
+	sqlOriginal                    bool
 	dependencies                   bool
 	dependencyTable                string
 	choosingDependency             bool
@@ -135,7 +139,7 @@ var (
 	accentStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC")).Bold(true)
 	mutedStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8"))
 	activeStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#0F172A")).Background(lipgloss.Color("#7DD3FC")).Bold(true)
-	borderStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#334155")).Padding(0, 1)
+	borderStyle         = lipgloss.NewStyle().Border(lipgloss.Border{Top: " ", Bottom: " ", Left: " ", Right: " ", TopLeft: " ", TopRight: " ", BottomLeft: " ", BottomRight: " "}).Padding(0, 1)
 	errorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#FCA5A5"))
 	sourceStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#A5B4FC"))
 	viewStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#7DD3FC"))
@@ -147,13 +151,17 @@ var (
 
 // Run starts the interactive materialized view browser.
 func Run(dsn string) error {
-	_, err := tea.NewProgram(model{dsn: dsn, loading: true}, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	_, err := tea.NewProgram(newModel(dsn, "", ""), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	return err
 }
 
 func RunSchema(path, database string) error {
-	_, err := tea.NewProgram(model{dsn: "offline:", schemaPath: path, schemaDatabase: database, loading: true}, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	_, err := tea.NewProgram(newModel("offline:", path, database), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	return err
+}
+
+func newModel(dsn, schemaPath, schemaDatabase string) model {
+	return model{dsn: dsn, schemaPath: schemaPath, schemaDatabase: schemaDatabase, loading: true, overview: true}
 }
 
 func loadSchema(path, database string) tea.Cmd {
@@ -258,6 +266,26 @@ func (m *model) cancelColumns() {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if !m.modalInner {
+		if _, resizing := msg.(tea.WindowSizeMsg); !resizing && m.hasModal() {
+			x, y, width, height := m.modalGeometry()
+			padding := m.modalPadding()
+			inner := m
+			inner.modalInner, inner.width, inner.height = true, width-2-2*padding, height
+			if mouse, ok := msg.(tea.MouseMsg); ok {
+				if mouse.X <= x+padding || mouse.X >= x+width-1-padding || mouse.Y <= y || mouse.Y >= y+height-1 {
+					return m, nil
+				}
+				mouse.X -= x + 1 + padding
+				mouse.Y = mouse.Y - y + 1
+				msg = mouse
+			}
+			next, cmd := inner.Update(msg)
+			updated := next.(model)
+			updated.modalInner, updated.width, updated.height = false, m.width, m.height
+			return updated, cmd
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -710,6 +738,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.target {
 				return m.Update(mouseKey("t"))
 			}
+			if m.columns {
+				return m.Update(mouseKey("c"))
+			}
+			if m.definition {
+				return m.Update(mouseKey("d"))
+			}
+			if !m.overview && len(m.views) > 0 {
+				return m.Update(mouseKey("o"))
+			}
 		case "e":
 			if m.loading || m.err != nil || len(m.views) == 0 {
 				break
@@ -799,6 +836,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelColumns()
 			m.lineOffset = 0
 			m.columnOffset = 0
+		case "v":
+			if m.definition && !m.overview {
+				m.sqlOriginal = !m.sqlOriginal
+				m.lineOffset, m.columnOffset = 0, 0
+			}
 		case "c":
 			if m.overview {
 				break
@@ -822,14 +864,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if len(m.views) > 0 {
-				m.lineOffset = minInt(m.lineOffset+maxInt(1, m.height-10), maxInt(0, len(m.detailLines())-maxInt(1, m.height-10)))
+				visible := m.detailVisibleRows()
+				m.lineOffset = minInt(m.lineOffset+visible, maxInt(0, len(m.detailLines())-visible))
 			}
 		case "pgup":
 			if m.overview {
 				m.overviewScroll = maxInt(0, m.overviewScroll-maxInt(1, m.height-7))
 				break
 			}
-			m.lineOffset = maxInt(0, m.lineOffset-maxInt(1, m.height-10))
+			m.lineOffset = maxInt(0, m.lineOffset-m.detailVisibleRows())
 		case "right", "l", "L", "shift+right":
 			if m.overview {
 				if (msg.String() == "right" || msg.String() == "l") && !m.overviewTargetFocus {
@@ -917,10 +960,23 @@ func (m model) detailWidth() int {
 	if width < 70 {
 		return maxInt(1, maxInt(8, width-4)-4)
 	}
-	return maxInt(28, width-maxInt(26, width/3)-5) - 4
+	return maxInt(28, width-listPanelWidth(width)-5) - 4
+}
+
+func listPanelWidth(width int) int { return maxInt(22, width/5) }
+
+func (m model) detailVisibleRows() int {
+	height := maxInt(5, m.height-8)
+	if m.width < 70 {
+		height = maxInt(5, m.height-9)
+	}
+	return maxInt(1, height-2)
 }
 
 func (m model) View() string {
+	if !m.modalInner && m.hasModal() {
+		return m.renderModal()
+	}
 	content := m.renderView()
 	if m.loading || m.height <= 0 {
 		return content
@@ -950,7 +1006,6 @@ func (m model) renderView() string {
 	if m.schemaPath != "" {
 		b.WriteString(mutedStyle.Render("  /  OFFLINE SQL"))
 	}
-	b.WriteString(mutedStyle.Render("  /  ClickHouse materialized views"))
 	if m.database != "" {
 		b.WriteString(accentStyle.Render("  /  DB: " + m.database))
 	}
@@ -964,7 +1019,7 @@ func (m model) renderView() string {
 	b.WriteString("\n\n")
 
 	if m.loading {
-		b.WriteString(mutedStyle.Render("Connecting and loading materialized views…"))
+		b.WriteString(loadingText("connecting and loading materialized views…"))
 		return b.String()
 	}
 	if m.err != nil {
@@ -997,7 +1052,11 @@ func (m model) renderView() string {
 	}
 	if m.choosingDatabase {
 		b.WriteString(accentStyle.Render("SELECT DATABASE"))
-		b.WriteString("\n\n")
+		position := 0
+		if len(m.databases) > 0 {
+			position = m.databaseCursor + 1
+		}
+		b.WriteString("\n" + mutedStyle.Render(fmt.Sprintf("%d/%d databases", position, len(m.databases))) + "\n")
 		if len(m.databases) == 0 {
 			b.WriteString(mutedStyle.Render("No databases available."))
 		}
@@ -1016,7 +1075,7 @@ func (m model) renderView() string {
 			}
 			b.WriteString("\n")
 		}
-		b.WriteString("\n" + mutedStyle.Render("[↑]/[↓] select  [enter] switch  [esc] cancel  [q] quit"))
+		b.WriteString("\n" + mutedStyle.Render("[esc] cancel  [enter] switch  [↑]/[↓] select  [q] quit"))
 		return b.String()
 	}
 	if m.overview {
@@ -1031,11 +1090,11 @@ func (m model) renderView() string {
 		panelWidth := maxInt(8, width-4)
 		b.WriteString(borderStyle.Width(panelWidth).Height(height).Render(m.renderDetail(maxInt(1, panelWidth-4), height)))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit", width, "…")))
+		b.WriteString(mutedStyle.Render(ansi.Truncate(m.detailFooter(height), width, "…")))
 		return b.String()
 	}
 
-	listWidth := maxInt(26, width/3)
+	listWidth := listPanelWidth(width)
 	detailWidth := width - listWidth - 5
 	if detailWidth < 28 {
 		detailWidth = 28
@@ -1049,8 +1108,38 @@ func (m model) renderView() string {
 		borderStyle.Width(detailWidth).Height(height).Render(detail),
 	))
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render(ansi.Truncate("[g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [f] filter  [o] overview  [b] database  [r] refresh  [q] quit  [↑]/[↓] select  [←]/[→] scroll", width, "…")))
+	b.WriteString(mutedStyle.Render(ansi.Truncate(m.detailFooter(height), width, "…")))
 	return b.String()
+}
+
+func (m model) detailFooter(height int) string {
+	footer := "[esc] back  [g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [o] overview"
+	switch {
+	case m.definition:
+		footer = "[esc] back  [v] original/formatted  [PgUp]/[PgDn] scroll  [←]/[→] horizontal"
+	case m.columns:
+		footer = "[esc] back  [d] SQL  [PgUp]/[PgDn] scroll  [←]/[→] horizontal"
+	case m.target:
+		footer = "[esc] back  [↑]/[↓] column  [g] dependencies  [PgUp]/[PgDn] scroll"
+	case m.dependencies:
+		footer = "[esc] back  [enter] open  [t] columns  [backspace] previous"
+	case m.failuresMode:
+		footer = "[esc] back  [enter] message  [w] window  [PgUp]/[PgDn] scroll"
+	}
+	if len(m.views) > 0 {
+		lines := m.detailLines()
+		visible := maxInt(1, height-2)
+		maxOffset := maxInt(0, len(lines)-visible)
+		longest := 0
+		for _, line := range lines {
+			longest = maxInt(longest, ansi.StringWidth(line))
+		}
+		if maxOffset > 0 || longest > m.detailWidth() {
+			position := fmt.Sprintf("%d/%d ↓  ↔%d/%d", minInt(m.lineOffset, maxOffset)+1, maxOffset+1, m.columnOffset+1, maxInt(1, longest-m.detailWidth()+1))
+			footer = "[esc] back  " + position + "  " + strings.TrimPrefix(footer, "[esc] back  ")
+		}
+	}
+	return footer
 }
 
 func (m model) renderList(width, height int) string {
@@ -1076,7 +1165,7 @@ func (m model) renderList(width, height int) string {
 		label := view.Name
 		label = truncate(label, width-2)
 		if i == m.selected {
-			b.WriteString(activeStyle.Width(width - 1).Render("› " + label))
+			b.WriteString(activeStyle.Width(width).Render("› " + label))
 		} else {
 			b.WriteString("  " + label)
 		}
@@ -1087,10 +1176,11 @@ func (m model) renderList(width, height int) string {
 
 // overviewLines renders a single graph for the selected database.
 func (m model) overviewLines() ([]string, []int) {
-	title := "FLOW OVERVIEW"
-	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
-		title += " · FILTERED"
+	width := m.width
+	if width <= 0 {
+		width = 80
 	}
+	title := m.overviewTitle(width)
 	header := []string{accentStyle.Render(title), mutedStyle.Render("Rates: rows/s, 60s avg · charts: " + m.chartPeriodLabel() + " · " + m.chartScaleLabel() + " · local node"), mutedStyle.Render("[T] inferred trigger · [I] input · R/W read/write · err " + m.statusWindowLabel() + " observed · 0 zero · · no event"), ""}
 	if m.schemaPath != "" {
 		warnings := 0
@@ -1101,7 +1191,7 @@ func (m model) overviewLines() ([]string, []int) {
 		header[2] = mutedStyle.Render("[T] inferred trigger · [I] other input · [r] reload dump")
 	}
 	if len(m.views) == 0 {
-		header = append(header, mutedStyle.Render("No matching materialized views."))
+		header = append(header, emptyText("No matching materialized views."))
 		if m.dump != nil {
 			for _, warning := range m.dump.Warnings {
 				header = append(header, errorStyle.Render("SQL dump: "+warning))
@@ -1136,6 +1226,65 @@ func (m model) overviewLines() ([]string, []int) {
 	return lines, positions
 }
 
+// Show both sides of the active filter even when the terminal is narrow.
+// Full database-qualified names avoid ambiguity across schemas.
+func (m model) overviewTitle(width int) string {
+	const title = "FLOW OVERVIEW"
+	if len(m.filterSource) == 0 && len(m.filterTarget) == 0 {
+		return title
+	}
+	sourceLabel, targetLabel := "Source: ", "Target: "
+	if width < 48 {
+		sourceLabel, targetLabel = "S: ", "T: "
+	}
+	prefix, separator := title+" · ", " · "
+	available := maxInt(0, width-ansi.StringWidth(prefix+sourceLabel+separator+targetLabel))
+	sourceNeed := ansi.StringWidth(filterSummary(m.filterSource, width))
+	targetNeed := ansi.StringWidth(filterSummary(m.filterTarget, width))
+	sourceWidth := minInt(sourceNeed, available/2)
+	targetWidth := minInt(targetNeed, available-sourceWidth)
+	if spare := available - sourceWidth - targetWidth; spare > 0 {
+		sourceWidth += minInt(spare, sourceNeed-sourceWidth)
+		targetWidth += minInt(available-sourceWidth-targetWidth, targetNeed-targetWidth)
+	}
+	return prefix + sourceLabel + filterSummary(m.filterSource, sourceWidth) + separator + targetLabel + filterSummary(m.filterTarget, targetWidth)
+}
+
+func filterSummary(names []string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if len(names) == 0 {
+		return ansi.Truncate("any", width, "…")
+	}
+	best, joined := "", ""
+	for i, name := range names {
+		if i > 0 {
+			joined += ", "
+		}
+		joined += name
+		value := joined
+		if remaining := len(names) - i - 1; remaining > 0 {
+			value += fmt.Sprintf(" +%d", remaining)
+		}
+		if ansi.StringWidth(value) > width {
+			break
+		}
+		best = value
+	}
+	if best != "" {
+		return best
+	}
+	suffix := ""
+	if len(names) > 1 {
+		suffix = fmt.Sprintf(" +%d", len(names)-1)
+	}
+	if ansi.StringWidth(suffix) >= width {
+		return ansi.Truncate(fmt.Sprintf("%d selected", len(names)), width, "…")
+	}
+	return ansi.Truncate(names[0], width-ansi.StringWidth(suffix), "…") + suffix
+}
+
 func (m *model) keepOverviewSelectionVisible() {
 	_, starts := m.overviewLines()
 	if m.selected >= len(starts) {
@@ -1158,6 +1307,13 @@ func (m model) renderOverview(width int) string {
 	header := append([]string(nil), lines[:4]...)
 	for i := range header {
 		header[i] = ansi.Truncate(header[i], maxInt(1, width), "…")
+	}
+	longest := 0
+	for _, line := range lines[4:] {
+		longest = maxInt(longest, ansi.StringWidth(line))
+	}
+	if len(lines)-4 > visible || longest > width {
+		header[3] = mutedStyle.Render(ansi.Truncate(fmt.Sprintf("Scroll: row %d/%d · column %d/%d", start+1, maxInt(1, len(lines)-4-visible+1), m.overviewColumn+1, maxInt(1, longest-width+1)), width, "…"))
 	}
 	content := append([]string(nil), lines[4+start:end]...)
 	for i := range content {
@@ -1189,11 +1345,12 @@ func (m model) renderDetail(width, height int) string {
 	lines := m.detailLines()
 	visible := maxInt(1, height-2)
 	start := minInt(m.lineOffset, maxInt(0, len(lines)-visible))
-	end := minInt(start+visible, len(lines))
-	for i := start; i < end; i++ {
+	end := minInt(1+start+maxInt(0, visible-1), len(lines))
+	header := ansi.Truncate(lines[0], width, "…")
+	for i := 1 + start; i < end; i++ {
 		lines[i] = ansi.Cut(strings.TrimRight(lines[i], "\r"), m.columnOffset, m.columnOffset+width)
 	}
-	return strings.Join(lines[start:end], "\n")
+	return strings.Join(append([]string{header}, lines[1+start:end]...), "\n")
 }
 
 func (m model) detailLines() []string {
@@ -1212,10 +1369,21 @@ func (m model) detailLines() []string {
 	} else if m.columns {
 		return splitColumnLines(m.columnLines())
 	} else if m.definition {
-		lines = append(lines, accentStyle.Render("CREATE DEFINITION"), "")
-		lines = append(lines, strings.Split(view.Definition, "\n")...)
+		lines = append(lines, accentStyle.Render("CREATE DEFINITION · "+view.Name))
+		definition := view.Definition
+		label := "Original SQL · [v] formatted"
+		if !m.sqlOriginal {
+			var ok bool
+			definition, ok = formatSQL(definition)
+			label = "Formatted SQL · [v] original"
+			if !ok {
+				label = "Formatting unavailable · original SQL"
+			}
+		}
+		lines = append(lines, mutedStyle.Render(label))
+		lines = append(lines, strings.Split(definition, "\n")...)
 	} else {
-		lines = append(lines, accentStyle.Render("DATA FLOW"), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
+		lines = append(lines, accentStyle.Render("DATA FLOW · "+view.Name), mutedStyle.Render("Inferred from SQL · arrows show query inputs"), "")
 		if m.dump != nil {
 			for _, warning := range m.dump.Warnings {
 				lines = append(lines, errorStyle.Render("SQL dump: "+warning))

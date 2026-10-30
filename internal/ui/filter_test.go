@@ -7,6 +7,8 @@ import (
 
 	"ch_insp/internal/clickhouse"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func filterFixture() model {
@@ -89,7 +91,7 @@ func TestFilterMouseAndStaleMetrics(t *testing.T) {
 	m.overview = true
 	next, _ := m.Update(mouseAtText(t, m, "[f]"))
 	m = next.(model)
-	next, _ = m.Update(mouseAtText(t, m, "[target]"))
+	next, _ = m.Update(mouseAtText(t, m, "Target"))
 	m = next.(model)
 	if m.filterField != 1 {
 		t.Fatal("click did not focus target")
@@ -109,6 +111,30 @@ func TestFilterMouseAndStaleMetrics(t *testing.T) {
 	m = next.(model)
 	if m.overviewReady {
 		t.Fatal("accepted stale overview metrics")
+	}
+}
+
+func TestFilterTabsShowFocusAndPreserveSelections(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+	m := filterFixture()
+	m.overview = true
+	m.openFilter()
+	m.draftSource = []string{"db.users"}
+	m.draftTarget = []string{"db.out"}
+	if tabs := m.filterTabs(); len(tabs) != 1 || !strings.Contains(tabs[0], activeStyle.Render(" Source ")) {
+		t.Fatal("source tab is not marked active")
+	}
+	next, _ := m.Update(mouseAtText(t, m, "Target"))
+	m = next.(model)
+	if tabs := m.filterTabs(); m.filterField != 1 || len(tabs) != 1 || !strings.Contains(tabs[0], activeStyle.Render(" Target ")) || !strings.Contains(m.renderFilter(80), "Selected: db.out") {
+		t.Fatal("target tab did not show its selection")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = next.(model)
+	if m.filterField != 0 || !strings.Contains(m.renderFilter(80), "Selected: db.users") {
+		t.Fatal("tab key did not restore source selection")
 	}
 }
 
@@ -164,20 +190,26 @@ func TestAnyTableSelectsAndClearsAllOptions(t *testing.T) {
 
 func TestFilterWheelScrollAndChoose(t *testing.T) {
 	m := filterFixture()
-	m.height = 15
+	m.height = 22
 	for i := 0; i < 20; i++ {
 		m.allViews = append(m.allViews, clickhouse.View{Database: "db", Name: fmt.Sprintf("v%d", i), Definition: fmt.Sprintf("CREATE MATERIALIZED VIEW v%d TO db.out AS SELECT * FROM db.src%02d", i, i)})
 	}
 	m.openFilter()
-	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress, X: 4, Y: 8})
+	x, y, _, height := m.modalGeometry()
+	inner := m
+	inner.height = height
+	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress, X: x + 3, Y: y + 6})
 	m = next.(model)
-	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress, X: 4, Y: 8})
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress, X: x + 3, Y: y + 6})
 	m = next.(model)
-	if m.filterCursors[0] != 6 || m.filterStart() == 0 {
-		t.Fatalf("wheel did not scroll: cursor %d start %d", m.filterCursors[0], m.filterStart())
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress, X: x + 3, Y: y + 6})
+	m = next.(model)
+	inner.filterCursors = m.filterCursors
+	if m.filterCursors[0] != 9 || inner.filterStart() == 0 {
+		t.Fatalf("wheel did not scroll: cursor %d start %d", m.filterCursors[0], inner.filterStart())
 	}
-	clicked := m.filterOptions(0)[m.filterStart()].value
-	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 3, Y: 7})
+	clicked := m.filterOptions(0)[inner.filterStart()].value
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: x + 3, Y: y + 6})
 	m = next.(model)
 	if !contains(m.draftSource, clicked) {
 		t.Fatalf("selected %v; expected %q", m.draftSource, clicked)
@@ -201,6 +233,26 @@ func TestMultipleSelectionUsesAnyWithinEachList(t *testing.T) {
 	m.filterViews()
 	if len(m.views) != 0 {
 		t.Fatalf("expected no view matching both filters: %v", m.views)
+	}
+}
+
+func TestFilterSearchAndPreview(t *testing.T) {
+	m := filterFixture()
+	m.openFilter()
+	next, _ := m.Update(mouseKey("/"))
+	next, _ = next.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("users")})
+	m = next.(model)
+	if options := m.filterOptions(0); len(options) != 1 || options[0].value != "db.users" {
+		t.Fatalf("unexpected search results: %#v", options)
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	next, _ = next.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = next.(model)
+	if !contains(m.draftSource, "db.users") || !strings.Contains(m.renderFilter(120), "1/2 MVs match") || !strings.Contains(m.renderFilter(120), "db.users") {
+		t.Fatalf("selection or preview missing: %s", m.renderFilter(120))
+	}
+	if len(m.filterSource) != 0 {
+		t.Fatal("draft changed active filters before apply")
 	}
 }
 

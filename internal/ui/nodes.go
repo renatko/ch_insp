@@ -167,7 +167,11 @@ func (m model) nodeSurveyLines(width int) []string {
 	return result
 }
 func (m model) renderNodes(width int) string {
-	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render("Direct connections · [v] survey selected cluster"), ""}
+	position := 0
+	if len(m.nodes) > 0 {
+		position = m.nodeCursor + 1
+	}
+	lines := []string{accentStyle.Render("SELECT NODE"), mutedStyle.Render("Current node: " + m.nodeName), mutedStyle.Render(fmt.Sprintf("Direct connections · %d/%d nodes · [v] survey cluster", position, len(m.nodes))), ""}
 	if m.nodeDetails {
 		details := m.selectedNodeSurvey()
 		if details == nil {
@@ -181,16 +185,16 @@ func (m model) renderNodes(width int) string {
 		return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] or [PgUp]/[PgDn] scroll  [esc] back")), "\n")
 	}
 	if m.nodeLoading {
-		lines = append(lines, mutedStyle.Render("Loading, connecting or surveying…"))
+		lines = append(lines, loadingText("nodes or survey…"))
 	} else if m.nodeError != nil {
-		lines = append(lines, errorStyle.Render(m.nodeError.Error()))
+		lines = append(lines, errorText(m.nodeError.Error()))
 	}
 	if !m.nodeLoading {
 		visible := m.nodeListVisible()
 		start := maxInt(0, m.nodeCursor-visible+1)
 		end := minInt(len(m.nodes), start+visible)
 		if len(m.nodes) == 0 {
-			lines = append(lines, mutedStyle.Render("No configured cluster nodes found."))
+			lines = append(lines, emptyText("No configured cluster nodes found."))
 		}
 		for i := start; i < end; i++ {
 			n := m.nodes[i]
@@ -217,7 +221,7 @@ func (m model) renderNodes(width int) string {
 			lines = append(lines, mutedStyle.Render(line))
 		}
 	}
-	return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] select  [v] survey cluster  [e] details  [enter] connect  [esc] back")), "\n")
+	return strings.Join(append(lines, "", mutedStyle.Render("[esc] back  [enter] connect  [v] survey cluster  [e] details  [↑]/[↓] select")), "\n")
 }
 func detailOrOK(s string) string {
 	if s == "" {

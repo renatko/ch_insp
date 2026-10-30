@@ -28,6 +28,14 @@ func TestDiagramConnectsMultipleSources(t *testing.T) {
 	}
 }
 
+func TestSelectedViewNameStaysOnOneLine(t *testing.T) {
+	m := model{views: []clickhouse.View{{Name: "audit_summary_mv"}}}
+	lines := strings.Split(ansi.Strip(m.renderList(18, 10)), "\n")
+	if len(lines) != 2 || lines[1] != "› audit_summary_mv" {
+		t.Fatalf("selected view wrapped: %#v", lines)
+	}
+}
+
 func TestDatabaseSelectionFiltersViews(t *testing.T) {
 	m := model{databases: []string{"one", "two", "empty"}, database: "one", allViews: []clickhouse.View{{Database: "one", Name: "first"}, {Database: "two", Name: "second"}}, metricsBusy: true}
 	m.filterViews()
@@ -99,6 +107,33 @@ func TestDiagramMetricsBelowBoxes(t *testing.T) {
 	}
 }
 
+func TestStartupShowsOverview(t *testing.T) {
+	for _, tc := range []struct{ dsn, path string }{{"clickhouse://localhost", ""}, {"offline:", "schema.sql"}} {
+		m := newModel(tc.dsn, tc.path, "db")
+		if !m.loading || !m.overview {
+			t.Fatalf("startup model for %q must load into overview", tc.dsn)
+		}
+		next, cmd := m.Update(viewsLoadedMsg{catalog: clickhouse.Catalog{CurrentDatabase: "db", Databases: []string{"db"}, Views: []clickhouse.View{{Database: "db", Name: "mv"}}}})
+		loaded := next.(model)
+		if !loaded.overview || !loaded.overviewBusy || cmd == nil {
+			t.Fatalf("catalog load for %q did not start overview loading", tc.dsn)
+		}
+	}
+}
+
+func TestEscapeReturnsFromDetailToOverview(t *testing.T) {
+	m := model{overview: false, definition: true, views: []clickhouse.View{{Name: "mv"}}}
+	next, _ := m.Update(mouseKey("esc"))
+	m = next.(model)
+	if m.definition || m.overview {
+		t.Fatal("escape should close the SQL definition first")
+	}
+	next, _ = m.Update(mouseKey("esc"))
+	if !next.(model).overview {
+		t.Fatal("escape should return from the diagram to overview")
+	}
+}
+
 func TestOverviewShowsFlowsAndRates(t *testing.T) {
 	m := model{overviewReady: true, views: []clickhouse.View{
 		{Database: "db", Name: "mv1", Definition: "CREATE MATERIALIZED VIEW mv1 TO middle AS SELECT * FROM source JOIN lookup ON 1"},
@@ -111,13 +146,45 @@ func TestOverviewShowsFlowsAndRates(t *testing.T) {
 			t.Errorf("overview missing %q:\n%s", value, joined)
 		}
 	}
-	if len(starts) != 2 || starts[1]-starts[0] != 3 {
+	if len(starts) != 2 || starts[1]-starts[0] != 5 {
 		t.Fatalf("unexpected view positions: %v", starts)
 	}
 	for _, value := range []string{"─▶", "────▶"} {
 		if !strings.Contains(joined, value) {
 			t.Errorf("overview diagram missing %q", value)
 		}
+	}
+}
+
+func TestOverviewShowsActiveFilters(t *testing.T) {
+	m := model{width: 100, height: 20, overview: true, database: "db", filterSource: []string{"db.events", "other.events"}, filterTarget: []string{"db.summary"}}
+	line := ansi.Strip(strings.Split(m.View(), "\n")[2])
+	if !strings.Contains(line, "Source: db.events, other.events") || !strings.Contains(line, "Target: db.summary") {
+		t.Fatalf("filter context missing: %q", line)
+	}
+	if !strings.Contains(m.View(), "No matching materialized views") {
+		t.Fatal("empty result must retain filter context")
+	}
+	m.filterSource = nil
+	line = ansi.Strip(strings.Split(m.View(), "\n")[2])
+	if !strings.Contains(line, "Source: any") || !strings.Contains(line, "Target: db.summary") {
+		t.Fatalf("target-only filter missing: %q", line)
+	}
+	m.filterTarget = nil
+	line = ansi.Strip(strings.Split(m.View(), "\n")[2])
+	if line != "FLOW OVERVIEW" {
+		t.Fatalf("cleared filter still visible: %q", line)
+	}
+}
+
+func TestOverviewFilterSummaryFitsNarrowWidth(t *testing.T) {
+	m := model{width: 40, filterSource: []string{"db.long_source_name", "db.second", "db.third"}, filterTarget: []string{"db.long_target_name"}}
+	title := m.overviewTitle(m.width)
+	if ansi.StringWidth(title) > m.width || !strings.Contains(title, "S:") || !strings.Contains(title, "T:") || !strings.Contains(title, "+2") {
+		t.Fatalf("narrow title loses filter context: %q", title)
+	}
+	if got := filterSummary([]string{"db.one", "db.two", "db.three"}, 16); got != "db.one +2" {
+		t.Fatalf("unexpected abbreviated summary: %q", got)
 	}
 }
 
@@ -247,6 +314,7 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 	}, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.src": 12, "db.users": 3, "db.destination": 6}, Views: map[string]clickhouse.ViewRate{"db.view_one": {Read: 9, Written: 5}}}}
 	lines, starts := m.overviewLines()
 	nameLine, statsLine := ansi.Strip(lines[starts[0]]), ansi.Strip(lines[starts[0]+1])
+	secondSource, secondStats := ansi.Strip(lines[starts[0]+2]), ansi.Strip(lines[starts[0]+3])
 	col := func(line, value string) int {
 		i := strings.Index(line, value)
 		if i < 0 {
@@ -254,12 +322,92 @@ func TestOverviewAlignsRatesUnderNodes(t *testing.T) {
 		}
 		return lipgloss.Width(line[:i])
 	}
-	if col(nameLine, "src") != col(statsLine, "inserted: 12.0") || col(nameLine, "users") != col(statsLine, "inserted: 3.0") || col(nameLine, "view_one") != col(statsLine, "R 9.0 / W 5.0") {
-		t.Fatalf("statistics are not below their nodes:\n%s\n%s", nameLine, statsLine)
+	if col(nameLine, "src") != col(statsLine, "inserted: 12.0") || col(secondSource, "users") != col(secondStats, "inserted: 3.0") || col(nameLine, "view_one") != col(statsLine, "R 9.0 / W 5.0") {
+		t.Fatalf("statistics are not below their nodes:\n%s\n%s\n%s\n%s", nameLine, statsLine, secondSource, secondStats)
 	}
 	nameLine, statsLine = ansi.Strip(lines[starts[1]]), ansi.Strip(lines[starts[1]+1])
 	if col(nameLine, "destination") != col(statsLine, "total: 6.0") {
 		t.Fatalf("target statistic is not aligned:\n%s\n%s", nameLine, statsLine)
+	}
+}
+
+func TestOverviewStacksMultipleSources(t *testing.T) {
+	views := []clickhouse.View{
+		{Database: "db", Name: "joined", Definition: "CREATE MATERIALIZED VIEW joined TO dst AS SELECT * FROM events JOIN users ON 1 JOIN regions ON 1"},
+		{Database: "db", Name: "other", Definition: "CREATE MATERIALIZED VIEW other TO dst AS SELECT * FROM other_source"},
+	}
+	m := model{database: "db", width: 120, height: 30, overview: true, views: views, allViews: views, overviewReady: true, overviewRates: clickhouse.OverviewRates{Tables: map[string]float64{"db.events": 12, "db.users": 3, "db.regions": 7}}}
+	lines, positions := m.overviewLines()
+	start := positions[0]
+	for offset, expected := range []string{"events [T]", "inserted: 12.0", "users [I]", "inserted: 3.0", "regions [I]", "inserted: 7.0"} {
+		if !strings.Contains(ansi.Strip(lines[start+offset]), expected) {
+			t.Fatalf("line %d lacks %q: %s", offset, expected, ansi.Strip(lines[start+offset]))
+		}
+	}
+	for offset, branch := range map[int]string{0: "─┬▶", 1: "│", 2: "─┤", 3: "│", 4: "─┘"} {
+		if !strings.Contains(ansi.Strip(lines[start+offset]), branch) {
+			t.Fatalf("source branch missing at %d: %q", offset, ansi.Strip(lines[start+offset]))
+		}
+	}
+	column := func(line, text string) int {
+		plain := ansi.Strip(line)
+		index := strings.Index(plain, text)
+		if index < 0 {
+			t.Fatalf("missing %q in %q", text, plain)
+		}
+		return lipgloss.Width(plain[:index])
+	}
+	base := column(lines[start], "events")
+	if column(lines[start+2], "users") != base+2 || column(lines[start+3], "inserted:") != base+2 || column(lines[start+4], "regions") != base+2 || column(lines[start+5], "inserted:") != base+2 {
+		t.Fatal("additional inputs and their metrics should be indented by two columns")
+	}
+	if positions[1] != start+6 {
+		t.Fatalf("next flow overlaps sources: %v", positions)
+	}
+	if targets := m.overviewTargets(); len(targets) != 1 || targets[0].line != positions[1] {
+		t.Fatalf("shared target position is incorrect: %#v", targets)
+	}
+}
+
+func TestOverviewDoesNotIndentUnknownTrigger(t *testing.T) {
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT id FROM events UNION ALL SELECT id FROM users"}
+	flow := clickhouse.InferFlow(view)
+	if flow.Trigger != "" || len(flow.Sources) != 2 {
+		t.Fatalf("fixture must have two sources and an unknown trigger: %#v", flow)
+	}
+	lines, positions := overviewGraph([]clickhouse.View{view}, clickhouse.OverviewRates{}, false, 0, nil)
+	first, second := ansi.Strip(lines[positions[0]]), ansi.Strip(lines[positions[0]+2])
+	firstStat, secondStat := ansi.Strip(lines[positions[0]+1]), ansi.Strip(lines[positions[0]+3])
+	column := func(line, text string) int {
+		index := strings.Index(line, text)
+		if index < 0 {
+			t.Fatalf("missing %q in %q", text, line)
+		}
+		return lipgloss.Width(line[:index])
+	}
+	if column(first, "events") != column(second, "users") || column(firstStat, "inserted:") != column(secondStat, "inserted:") {
+		t.Fatalf("unknown trigger sources should have equal indentation:\n%s\n%s\n%s\n%s", first, firstStat, second, secondStat)
+	}
+}
+
+func TestOverviewInputConnectorUsesFlowColor(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(oldProfile)
+	view := clickhouse.View{Database: "db", Name: "mv", Definition: "CREATE MATERIALIZED VIEW mv TO dst AS SELECT * FROM events JOIN users ON 1 JOIN regions ON 1"}
+	color := lipgloss.Color("#60A5FA")
+	for _, selected := range []int{0, -1} {
+		lines, positions := overviewGraph([]clickhouse.View{view}, clickhouse.OverviewRates{}, false, selected, map[string]lipgloss.Color{"db.dst": color})
+		style := lipgloss.NewStyle().Foreground(color)
+		if selected == 0 {
+			style = style.Background(selectionBackground)
+		}
+		connector := style.Render("  │  ")
+		for _, offset := range []int{1, 3} {
+			if !strings.Contains(lines[positions[0]+offset], connector) {
+				t.Fatalf("selected=%d, line %d: connector is not rendered in flow color: %q", selected, offset, lines[positions[0]+offset])
+			}
+		}
 	}
 }
 
@@ -631,8 +779,13 @@ func TestHotkeysStayOnLastTerminalLine(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := model{width: tc.width, height: tc.height, database: "db", databases: []string{"db"}, views: views, allViews: views, overview: tc.overview, filtering: tc.filtering, choosingDatabase: tc.choosing}
 			lines := strings.Split(m.View(), "\n")
-			if len(lines) != tc.height || !strings.Contains(ansi.Strip(lines[len(lines)-1]), "[") {
-				t.Fatalf("footer not at bottom: got %d lines, footer %q", len(lines), lines[len(lines)-1])
+			footer := len(lines) - 1
+			if m.hasModal() {
+				_, y, _, height := m.modalGeometry()
+				footer = y + height - 2
+			}
+			if len(lines) != tc.height || !strings.Contains(ansi.Strip(lines[footer]), "[") {
+				t.Fatalf("footer not at bottom of active viewport: got %d lines, footer %q", len(lines), lines[footer])
 			}
 		})
 	}

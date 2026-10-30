@@ -12,10 +12,10 @@ func (m model) columnLines() []string {
 	}
 	lines := []string{accentStyle.Render("COLUMN FLOW"), mutedStyle.Render(source), ""}
 	if m.columnsLoading {
-		return append(lines, mutedStyle.Render("Loading column metadata…"))
+		return append(lines, loadingText("column metadata…"))
 	}
 	if m.columnsError != nil {
-		return append(lines, errorStyle.Render("Cannot analyze view: "+m.columnsError.Error()), mutedStyle.Render("Press [d] to inspect the original SQL."))
+		return append(lines, errorText("Cannot analyze view: "+m.columnsError.Error()), mutedStyle.Render("Press [d] to inspect the original SQL."))
 	}
 	for _, warning := range m.columnsData.Warnings {
 		lines = append(lines, errorStyle.Render("! "+warning))

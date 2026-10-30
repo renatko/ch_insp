@@ -73,13 +73,13 @@ func (m *model) loadFailures() tea.Cmd {
 func (m model) failureLines() []string {
 	lines := []string{accentStyle.Render("MV ERRORS · " + m.views[m.selected].Name), mutedStyle.Render("Last " + m.statusWindowLabel() + " · local node · up to 50 events · [w] window · [e]/[esc] back"), ""}
 	if m.failuresLoading {
-		return append(lines, mutedStyle.Render("Loading errors…"))
+		return append(lines, loadingText("errors…"))
 	}
 	if m.failuresError != nil {
-		return append(lines, errorStyle.Render(m.failuresError.Error()))
+		return append(lines, errorText(m.failuresError.Error()))
 	}
 	if len(m.failures) == 0 {
-		return append(lines, mutedStyle.Render("No observed errors; logging may be disabled or delayed."))
+		return append(lines, emptyText("No observed errors; logging may be disabled or delayed."))
 	}
 	if m.failureDetail {
 		f := m.failures[m.failureSelected]

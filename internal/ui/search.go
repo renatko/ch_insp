@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"ch_insp/internal/clickhouse"
@@ -51,6 +52,14 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
+	case "ctrl+x":
+		if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
+			next, cmd := m.applyFilter(nil, nil)
+			updated := next.(model)
+			updated.searching = true
+			updated.searchCursor = 0
+			return updated, cmd
+		}
 	case "up":
 		m.searchCursor = maxInt(0, m.searchCursor-1)
 	case "down":
@@ -89,12 +98,26 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Bring the matching name into the horizontal viewport.
 			lines, positions := m.overviewLines()
 			if r.index < len(positions) {
-				text := ansi.Strip(lines[positions[r.index]])
+				position := positions[r.index]
+				if r.kind == "source" {
+					for i, source := range clickhouse.InferFlow(m.views[r.index]).Sources {
+						if source == r.name {
+							position += 2 * i
+							break
+						}
+					}
+					line := position - 4
+					visible := maxInt(1, m.height-7)
+					if line < m.overviewScroll || line+1 >= m.overviewScroll+visible {
+						m.overviewScroll = maxInt(0, line)
+					}
+				}
+				text := ansi.Strip(lines[position])
 				name := shortName(r.name)
 				at := strings.Index(text, name)
 				if r.kind == "MV" {
-					if arrow := strings.Index(text, " ─▶ "); arrow >= 0 {
-						start := arrow + len(" ─▶ ")
+					if arrow, length := overviewFlowArrow(text); arrow >= 0 {
+						start := arrow + length
 						if offset := strings.Index(text[start:], m.views[r.index].Name); offset >= 0 {
 							at = start + offset
 						} else {
@@ -129,13 +152,30 @@ func (m model) renderSearch(width int) string {
 	if len(results) > 0 {
 		position = minInt(m.searchCursor, len(results)-1) + 1
 	}
-	lines := []string{accentStyle.Render("SEARCH FLOWS"), "/ " + m.searchQuery + "▏", mutedStyle.Render(fmt.Sprintf("%d/%d matches in filtered views", position, len(results))), ""}
+	scope := "current database"
+	if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
+		scope = "filtered views · [ctrl+x] clear filters"
+	}
+	lines := []string{accentStyle.Render("SEARCH FLOWS"), "/ " + m.searchQuery + "▏", mutedStyle.Render(fmt.Sprintf("%d/%d matches · %s", position, len(results), scope)), ""}
 	visible := maxInt(1, m.height-10)
 	start := maxInt(0, m.searchCursor-visible+1)
 	end := minInt(len(results), start+visible)
 	for i := start; i < end; i++ {
 		r := results[i]
-		line := fmt.Sprintf("  %-7s %s", r.kind, r.name)
+		kind := fmt.Sprintf("%-7s", r.kind)
+		name := r.name
+		if re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(strings.TrimSpace(m.searchQuery))); err == nil && strings.TrimSpace(m.searchQuery) != "" {
+			if match := re.FindStringIndex(name); match != nil {
+				name = name[:match[0]] + accentStyle.Underline(true).Render(name[match[0]:match[1]]) + name[match[1]:]
+			}
+		}
+		style := sourceStyle
+		if r.kind == "MV" {
+			style = viewStyle
+		} else if r.kind == "target" {
+			style = targetStyle
+		}
+		line := "  " + style.Render(kind) + " " + name
 		if r.kind == "source" {
 			line += "  → " + m.views[r.index].Name
 		}
@@ -146,8 +186,14 @@ func (m model) renderSearch(width int) string {
 		lines = append(lines, line)
 	}
 	if len(results) == 0 {
-		lines = append(lines, mutedStyle.Render("No matches."))
+		message := "No matches."
+		if strings.TrimSpace(m.searchQuery) == "" {
+			message = "Type to search sources, MVs and targets."
+		} else if len(m.filterSource) > 0 || len(m.filterTarget) > 0 {
+			message = "No matches in filtered views. [ctrl+x] clears filters."
+		}
+		lines = append(lines, emptyText(message))
 	}
-	lines = append(lines, "", mutedStyle.Render("[↑]/[↓] select  [enter] jump  [esc] cancel"))
+	lines = append(lines, "", mutedStyle.Render("[esc] cancel  [enter] jump  [↑]/[↓] select"))
 	return strings.Join(lines, "\n")
 }

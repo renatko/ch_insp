@@ -69,12 +69,15 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.filtering {
 			if msg.Y == 4 {
-				lines := strings.Split(m.View(), "\n")
-				line := ansi.Strip(lines[4])
-				at := strings.Index(line, "[target]")
-				m.filterField = 0
-				if at >= 0 && msg.X >= lipgloss.Width(line[:at]) {
+				source, target := m.filterTabLabels()
+				sourceEnd := lipgloss.Width(source)
+				targetStart := sourceEnd + 2
+				if msg.X >= 0 && msg.X < sourceEnd {
+					m.filterField = 0
+					m.filterEditing = false
+				} else if msg.X >= targetStart && msg.X < targetStart+lipgloss.Width(target) {
 					m.filterField = 1
+					m.filterEditing = false
 				}
 			} else if msg.Y >= 7 && msg.Y < 7+m.filterVisible() {
 				m.selectFilterOption(m.filterField, m.filterStart()+msg.Y-7)
@@ -92,52 +95,29 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.overview && len(m.views) > 0 {
-			lines, starts := m.overviewLines()
-			visible := maxInt(1, m.height-7)
-			start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-visible))
-			line := start + msg.Y - 2
-			allViews := m.allViews
-			if allViews == nil {
-				allViews = m.views
+			index, target, hit := m.overviewHit(msg.X, msg.Y)
+			if !hit {
+				return m, nil
 			}
-			graph, _ := overviewGraph(m.views, m.overviewRates, m.overviewReady, m.selected, overviewColors(allViews, m.database))
-			if msg.Y >= 6 && msg.Y < 6+visible && line >= 4 && line < 4+len(graph) {
-				for _, target := range m.overviewTargets() {
-					x := msg.X + m.overviewColumn
-					if (line == target.line || line == target.line+1) && x >= target.column && x < target.column+target.width {
-						if m.overviewTargetFocus {
-							current, ok := m.selectedOverviewTarget()
-							if ok && current.key == target.key {
-								return m.Update(mouseKey("enter"))
-							}
-						}
-						m.selected = target.index
-						m.overviewTargetFocus = true
-						m.keepOverviewTargetVisible()
-						return m, nil
-					}
-				}
-				index, best := -1, -1
-				for i, position := range starts {
-					if position <= line && position > best {
-						index, best = i, position
-					}
-				}
-				if index >= 0 {
-					if m.overviewTargetFocus {
-						m.overviewTargetFocus = false
-						m.selected = index
-						return m, nil
-					}
-					if index == m.selected {
+			if target {
+				if m.overviewTargetFocus {
+					current, ok := m.selectedOverviewTarget()
+					if ok && current.index == index {
 						return m.Update(mouseKey("enter"))
 					}
-					m.selected, m.lineOffset, m.columnOffset, m.metricsReady = index, 0, 0, false
 				}
+				m.selected, m.overviewTargetFocus = index, true
+				m.keepOverviewTargetVisible()
+			} else if m.overviewTargetFocus {
+				m.overviewTargetFocus, m.selected = false, index
+			} else if index == m.selected {
+				return m.Update(mouseKey("enter"))
+			} else {
+				m.selected, m.lineOffset, m.columnOffset, m.metricsReady = index, 0, 0, false
 			}
 			return m, nil
 		}
-		if m.dependencies && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+		if m.dependencies && (m.width < 70 || msg.X >= listPanelWidth(m.width)+1) {
 			contentTop := 3
 			height := maxInt(5, m.height-8)
 			if m.width < 70 {
@@ -156,7 +136,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.failuresMode && !m.failuresLoading && !m.failureDetail && m.failuresError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+		if m.failuresMode && !m.failuresLoading && !m.failureDetail && m.failuresError == nil && (m.width < 70 || msg.X >= listPanelWidth(m.width)+1) {
 			contentTop := 3
 			height := maxInt(5, m.height-8)
 			if m.width < 70 {
@@ -176,7 +156,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.target && !m.targetLoading && m.targetError == nil && (m.width < 70 || msg.X >= maxInt(26, m.width/3)+1) {
+		if m.target && !m.targetLoading && m.targetError == nil && (m.width < 70 || msg.X >= listPanelWidth(m.width)+1) {
 			contentTop := 3
 			height := maxInt(5, m.height-8)
 			if m.width < 70 {
@@ -193,7 +173,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.width >= 70 && msg.X >= 0 && msg.X < maxInt(26, m.width/3) && msg.Y >= 4 {
+		if m.width >= 70 && msg.X >= 0 && msg.X < listPanelWidth(m.width) && msg.Y >= 4 {
 			limit := maxInt(1, maxInt(5, m.height-8)-2)
 			start := maxInt(0, m.selected-limit+1)
 			index := start + msg.Y - 4
@@ -256,7 +236,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		if delta != 0 {
 			field := m.filterField
-			m.filterCursors[field] = minInt(maxInt(0, m.filterCursors[field]+delta), len(m.filterOptions(field))-1)
+			m.filterCursors[field] = minInt(maxInt(0, m.filterCursors[field]+delta), maxInt(0, len(m.filterOptions(field))-1))
 		}
 		return m, nil
 	}
@@ -285,7 +265,7 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.overviewScroll = minInt(maxInt(0, m.overviewScroll+delta), maxInt(0, len(lines)-4-maxInt(1, m.height-7)))
 		return m, nil
 	}
-	if m.width >= 70 && msg.X < maxInt(26, m.width/3) {
+	if m.width >= 70 && msg.X < listPanelWidth(m.width) {
 		if len(m.views) > 0 {
 			if m.selectView(minInt(maxInt(0, m.selected+delta), len(m.views)-1)) && (m.columns || m.target || m.failuresMode) {
 				cmd := m.columnCmdIfActive()
@@ -362,49 +342,60 @@ func (m model) clickedAction(x, y int) string {
 // Hover only changes focus within actual diagram rows; it never scrolls or
 // opens anything, so moving across an empty area cannot change selection.
 func (m *model) hoverOverview(x, y int) {
-	if len(m.views) == 0 {
+	index, target, hit := m.overviewHit(x, y)
+	if !hit {
 		return
+	}
+	if m.selected != index {
+		m.metricsReady = false
+	}
+	m.selected, m.overviewTargetFocus = index, target
+}
+
+// Both hover and click use the same boundaries, including the target's metrics.
+func (m model) overviewHit(x, y int) (int, bool, bool) {
+	if len(m.views) == 0 {
+		return 0, false, false
 	}
 	lines, positions := m.overviewLines()
 	visible := maxInt(1, m.height-7)
 	if y < 6 || y >= 6+visible {
-		return
+		return 0, false, false
 	}
 	start := minInt(m.overviewScroll, maxInt(0, len(lines)-4-visible))
 	line := start + y - 2
 	if line < 0 || line >= len(lines) {
-		return
+		return 0, false, false
 	}
 	column := x + m.overviewColumn
 	for _, target := range m.overviewTargets() {
 		if (line == target.line || line == target.line+1) && column >= target.column && column < target.column+target.width {
-			m.selected = target.index
-			m.overviewTargetFocus = true
-			return
+			return target.index, true, true
 		}
 	}
-	for i, pos := range positions {
-		if line != pos && line != pos+1 {
-			continue
-		}
+	if i, row := overviewRowAtLine(m.views, positions, line); i >= 0 {
+		pos := positions[i]
 		flow := ansi.Strip(lines[pos])
-		arrow := strings.Index(flow, " ─▶ ")
+		arrow, arrowLength := overviewFlowArrow(flow)
 		if arrow < 0 {
-			continue
+			return 0, false, false
 		}
-		after := arrow + len(" ─▶ ")
+		after := arrow + arrowLength
 		name := strings.Index(flow[after:], m.views[i].Name)
 		if name < 0 {
-			continue
+			return 0, false, false
 		}
-		end := lipgloss.Width(flow[:after+name+len(m.views[i].Name)])
+		nameEnd := after + name + len(m.views[i].Name)
+		end := lipgloss.Width(flow[:nameEnd])
+		if branch := strings.Index(flow[nameEnd:], " ──"); branch >= 0 {
+			end = lipgloss.Width(flow[:nameEnd+branch])
+		}
+		if row >= 2 {
+			end = lipgloss.Width(flow[:arrow])
+		}
 		if column >= 0 && column < end {
-			if m.selected != i {
-				m.metricsReady = false
-			}
-			m.selected = i
-			m.overviewTargetFocus = false
+			return i, false, true
 		}
-		return
 	}
+	return 0, false, false
 }

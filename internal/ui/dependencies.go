@@ -51,7 +51,7 @@ func (m model) dependencyLines() []string {
 	lines := []string{accentStyle.Render("TABLE DEPENDENCIES"), targetStyle.Render(m.dependencyTable), mutedStyle.Render("SQL-inferred · all visible schemas · may be incomplete"), ""}
 	items := m.dependencyItems()
 	if len(items) == 0 {
-		lines = append(lines, mutedStyle.Render("No visible inferred relationships."))
+		lines = append(lines, emptyText("No visible inferred relationships."))
 	}
 	for i, item := range items {
 		prefix := "  "
@@ -272,5 +272,5 @@ func (m model) renderDependencyPicker(width int) string {
 		}
 		lines = append(lines, line)
 	}
-	return strings.Join(append(lines, "", mutedStyle.Render("[↑]/[↓] select  [enter] open  [esc] cancel")), "\n")
+	return strings.Join(append(lines, "", mutedStyle.Render("[esc] cancel  [enter] open  [↑]/[↓] select")), "\n")
 }

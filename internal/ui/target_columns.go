@@ -87,10 +87,10 @@ func (m model) targetColumnWindow() (int, int) {
 func (m model) targetLines() []string {
 	lines := []string{accentStyle.Render("TARGET TABLE"), mutedStyle.Render("Potential MV outputs · matched by column name · [t] back"), ""}
 	if m.targetLoading {
-		return append(lines, mutedStyle.Render("Loading target columns and materialized views…"))
+		return append(lines, loadingText("target columns and materialized views…"))
 	}
 	if m.targetError != nil {
-		return append(lines, errorStyle.Render("Cannot inspect target: "+m.targetError.Error()))
+		return append(lines, errorText("Cannot inspect target: "+m.targetError.Error()))
 	}
 	data := m.targetData
 	lines = append(lines, targetStyle.Render(shortName(data.Database+"."+data.Table))+mutedStyle.Render(fmt.Sprintf("  ·  %d columns · %d visible MVs", len(data.Columns), len(data.Views))))
