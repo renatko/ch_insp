@@ -1,0 +1,23 @@
+name: ch-insp
+arch: ${PACKAGE_ARCH}
+platform: linux
+version: ${PACKAGE_VERSION}
+maintainer: ch_insp contributors
+description: Read-only terminal UI for exploring ClickHouse materialized views
+homepage: https://github.com/renatko/ch_insp
+license: MIT
+contents:
+  - src: ./ch_insp
+    dst: /usr/bin/ch_insp
+    file_info:
+      mode: 0755
+  - src: ./LICENSE
+    dst: /usr/share/doc/ch-insp/LICENSE
+  - src: ./README.md
+    dst: /usr/share/doc/ch-insp/README.md
+  - src: ./docs/
+    dst: /usr/share/doc/ch-insp/docs
+    type: tree
+  - src: ./THIRD_PARTY_LICENSES/
+    dst: /usr/share/doc/ch-insp/THIRD_PARTY_LICENSES
+    type: tree

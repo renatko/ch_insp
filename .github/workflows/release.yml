@@ -17,10 +17,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install package tools
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+          sudo apt-get update && sudo apt-get install -y rpm cpio
       - name: Build release archives
-        run: python3 scripts/build_release.py "$RUNNER_TEMP/chinspector-release"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python3 scripts/build_release.py "$RUNNER_TEMP/chinspector-release" "$RELEASE_TAG"
       - name: Verify archives and checksums
-        run: python3 tests/release/check_archives.py "$RUNNER_TEMP/chinspector-release"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python3 tests/release/check_archives.py "$RUNNER_TEMP/chinspector-release" "$RELEASE_TAG"
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}

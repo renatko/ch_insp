@@ -4,6 +4,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -93,9 +94,15 @@ def collect_licenses(stage, env):
 
 def main():
     output = Path(sys.argv[1] if len(sys.argv) > 1 else "dist").resolve()
+    version = (sys.argv[2] if len(sys.argv) > 2 else "0.0.0").removeprefix("v")
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+        raise ValueError(f"Expected a semantic release version, got {version!r}")
+    if not shutil.which("nfpm"):
+        raise RuntimeError("nfpm is required; install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0")
     output.mkdir(parents=True, exist_ok=True)
     archives = [f"ch_insp_{os_name}_{arch}.{'zip' if os_name == 'windows' else 'tar.gz'}" for os_name, arch in TARGETS]
-    for name in archives + ["SHA256SUMS"]:
+    packages = [f"ch_insp_{version}_{arch}.{fmt}" for arch in ("amd64", "arm64") for fmt in ("deb", "rpm")]
+    for name in archives + packages + ["SHA256SUMS"]:
         if (output / name).exists():
             raise FileExistsError(f"Refusing to overwrite {output / name}")
 
@@ -111,6 +118,11 @@ def main():
             shutil.copyfile(ROOT / "README.md", stage / "README.md")
             shutil.copytree(ROOT / "docs", stage / "docs")
             collect_licenses(stage, env)
+            if os_name == "linux":
+                package_env = dict(env, PACKAGE_ARCH=arch, PACKAGE_VERSION=version)
+                for fmt in ("deb", "rpm"):
+                    name = f"ch_insp_{version}_{arch}.{fmt}"
+                    subprocess.run(["nfpm", "pkg", "--config", str(ROOT / "nfpm.yaml"), "--packager", fmt, "--target", str(output / name)], cwd=stage, env=package_env, check=True)
             if os_name == "windows":
                 with zipfile.ZipFile(output / archive, "w", zipfile.ZIP_DEFLATED) as zipped:
                     for path in sorted(stage.rglob("*")):
@@ -122,7 +134,7 @@ def main():
                         tar.add(path, arcname=path.name)
 
     with (output / "SHA256SUMS").open("w") as checksums:
-        for name in archives:
+        for name in archives + packages:
             digest = hashlib.sha256((output / name).read_bytes()).hexdigest()
             checksums.write(f"{digest}  {name}\n")
     print(f"Release archives created in {output}")
