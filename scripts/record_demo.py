@@ -32,7 +32,7 @@ def main():
     parser.add_argument("--port", type=int, default=int(os.environ.get("DEMO_STANDALONE_PORT", "19100")))
     parser.add_argument("--output", type=Path, default=ROOT / "docs/assets/demo.gif")
     parser.add_argument("--agg", default="agg", help="path to the asciinema agg executable")
-    parser.add_argument("--font-family", help="monospace font available to agg, e.g. Menlo")
+    parser.add_argument("--font-family", default="JetBrains Mono", help="monospace font available to agg (default: JetBrains Mono)")
     args = parser.parse_args()
     agg = shutil.which(args.agg)
     if not agg:
@@ -172,8 +172,7 @@ def main():
             os.close(master)
 
         command = [agg, "--quiet", "--font-size", "15", "--line-height", "1.25", "--theme", "github-dark", "--fps-cap", "8", "--idle-time-limit", "2", "--last-frame-duration", "1"]
-        if args.font_family:
-            command.extend(["--font-family", args.font_family])
+        command.extend(["--font-family", args.font_family])
         subprocess.run(command + [str(cast), str(gif)], check=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(gif, args.output)
