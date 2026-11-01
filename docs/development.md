@@ -67,7 +67,8 @@ The repository and release archives must be publicly accessible to users.
 
 On macOS or Linux, the recording script builds the TUI, connects to the local
 synthetic demo, and drives a short interactive tour. It requires Go, Docker
-Compose, Python 3, `pyte` and [asciinema agg](https://github.com/asciinema/agg)
+Compose, Python 3, `pyte`, [JetBrains Mono](https://www.jetbrains.com/lp/mono/)
+and [asciinema agg](https://github.com/asciinema/agg)
 (the GIF in this repository was rendered with agg 1.9.0).
 
 ```sh
@@ -79,6 +80,6 @@ python3 -m venv /tmp/chinspector-recording-venv
 
 The script writes `docs/assets/demo.gif` and leaves the demo running. If `agg`
 is not on `PATH`, pass `--agg /path/to/agg`. Use `--port` for a non-default
-standalone demo port, `--font-family` to select an installed monospace font,
+standalone demo port, `--font-family` to select a different installed monospace font,
 or `--output` to write elsewhere. The script connects as the demo's default
 user and does not record credentials.
