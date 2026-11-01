@@ -68,7 +68,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install package tools
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+          sudo apt-get update && sudo apt-get install -y rpm cpio
       - name: Build release archives
         run: python3 scripts/build_release.py "$RUNNER_TEMP/chinspector-release"
       - name: Verify archives and checksums
         run: python3 tests/release/check_archives.py "$RUNNER_TEMP/chinspector-release"
+      - name: Install and run Debian package
+        run: |
+          sudo dpkg -i "$RUNNER_TEMP/chinspector-release/ch_insp_0.0.0_amd64.deb"
+          ch_insp --help
+          sudo dpkg -r ch-insp

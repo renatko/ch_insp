@@ -32,11 +32,12 @@ def verify_binary(data, os_name, arch):
 
 def main():
     directory = Path(sys.argv[1])
+    version = (sys.argv[2] if len(sys.argv) > 2 else "0.0.0").removeprefix("v")
     checksums = {}
     for line in (directory / "SHA256SUMS").read_text().splitlines():
         digest, name = line.split("  ", 1)
         checksums[name] = digest
-    assert len(checksums) == len(TARGETS), "unexpected number of checksums"
+    assert len(checksums) == len(TARGETS) + 4, "unexpected number of checksums"
     for os_name, arch in TARGETS:
         binary = "ch_insp.exe" if os_name == "windows" else "ch_insp"
         name = f"ch_insp_{os_name}_{arch}.{'zip' if os_name == 'windows' else 'tar.gz'}"
@@ -70,6 +71,26 @@ def main():
                 executable.chmod(0o755)
                 subprocess.run([str(executable), "--help"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(f"Verified {name}")
+
+    for arch in ("amd64", "arm64"):
+        for fmt in ("deb", "rpm"):
+            name = f"ch_insp_{version}_{arch}.{fmt}"
+            path = directory / name
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == checksums[name], f"checksum mismatch: {name}"
+            if platform.system() == "Linux":
+                with tempfile.TemporaryDirectory(prefix="chinspector-package-test-") as temporary:
+                    if fmt == "deb":
+                        metadata = subprocess.check_output(["dpkg-deb", "-f", str(path), "Package", "Version", "Architecture"], text=True)
+                        assert f"Architecture: {arch}" in metadata, metadata
+                        subprocess.run(["dpkg-deb", "-x", str(path), temporary], check=True)
+                    else:
+                        metadata = subprocess.check_output(["rpm", "-qp", "--queryformat", "%{NAME} %{VERSION} %{ARCH}", str(path)], text=True)
+                        assert metadata.split()[-1] == {"amd64": "x86_64", "arm64": "aarch64"}[arch], metadata
+                        cpio = subprocess.check_output(["rpm2cpio", str(path)])
+                        subprocess.run(["cpio", "-id", "--quiet"], input=cpio, cwd=temporary, check=True)
+                    verify_binary((Path(temporary) / "usr/bin/ch_insp").read_bytes(), "linux", arch)
+                    assert (Path(temporary) / "usr/share/doc/ch-insp/LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
+            print(f"Verified {name}")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,17 @@ A read-only terminal UI for exploring ClickHouse materialized views and the data
 
 Download an archive for Linux, macOS or Windows (amd64 or arm64) from [GitHub Releases](https://github.com/renatko/ch_insp/releases/latest). Extract it and run `ch_insp` (`ch_insp.exe` on Windows). The release also provides SHA-256 checksums; archives include license notices. Binaries are not signed or notarized.
 
+Linux releases also provide `.deb` and `.rpm` packages for amd64 and arm64.
+Download the package for your architecture from the release and install it:
+
+```sh
+sudo apt install ./ch_insp_VERSION_amd64.deb   # Debian / Ubuntu
+sudo dnf install ./ch_insp_VERSION_amd64.rpm   # Fedora / RHEL
+```
+
+Replace `VERSION` and `amd64` with the downloaded version and architecture.
+These are standalone packages; updates require downloading a new release.
+
 To build from source, install Go 1.27.3 or newer:
 
 ```sh

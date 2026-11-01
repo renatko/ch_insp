@@ -21,18 +21,23 @@ The test uses the existing credentials to discover and contact nodes and checks 
 ## Release artifacts
 
 Publishing a GitHub release for a tag containing the release workflow builds
-and attaches archives for Linux, macOS and Windows on amd64 and arm64, plus a
+and attaches archives for Linux, macOS and Windows on amd64 and arm64, Linux
+`.deb` and `.rpm` packages for both architectures, plus a
 `SHA256SUMS` file. Each archive contains the executable, README, project license
 documentation and notices for its Go dependencies. The binaries are not signed or notarized.
 
+Release builds require Go, Python 3 and nFPM 2.48.0. On Linux, checking the
+packages also requires `dpkg-deb`, `rpm`, `rpm2cpio` and `cpio`.
 Release builds can be reproduced and checked locally:
 
 ```sh
-python3 scripts/build_release.py /tmp/chinspector-dist
-python3 tests/release/check_archives.py /tmp/chinspector-dist
+go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
+python3 scripts/build_release.py /tmp/chinspector-dist 0.2.0
+python3 tests/release/check_archives.py /tmp/chinspector-dist 0.2.0
 ```
 
-Use an empty output directory. The release workflow will not overwrite existing
+Use an empty output directory and a semantic version matching the release tag
+(with or without a leading `v`). The release workflow will not overwrite existing
 assets; remove conflicting assets before rerunning a partially completed release.
 
 ## Record the demo GIF
