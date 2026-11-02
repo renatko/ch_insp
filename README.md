@@ -69,7 +69,18 @@ Or pass connection options explicitly:
 ch_insp --host localhost --port 9000 --user default --database demo
 ```
 
-For credentials, prefer the environment variable over command-line arguments, which may be visible in process listings and shell history. See [connection options](docs/usage.md#connecting-and-offline-mode) for TLS, precedence and defaults.
+For a password-protected connection, include credentials in `CLICKHOUSE_URL`:
+
+```sh
+export CLICKHOUSE_URL='clickhouse://user:password@localhost:9000/demo'
+ch_insp
+```
+
+Percent-encode special characters in the username and password. You can also
+pass `--password`, but command-line arguments may be visible in process
+listings. Avoid entering real credentials directly into shell history. See
+[connection options](docs/usage.md#connecting-and-offline-mode) for TLS,
+precedence and defaults.
 
 On Windows PowerShell, set the URL with
 `$env:CLICKHOUSE_URL = 'clickhouse://default@localhost:9000/demo'` and run
