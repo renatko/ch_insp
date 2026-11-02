@@ -23,7 +23,7 @@ The test uses the existing credentials to discover and contact nodes and checks 
 Publishing a GitHub release for a tag containing the release workflow builds
 and attaches archives for Linux, macOS and Windows on amd64 and arm64, Linux
 `.deb` and `.rpm` packages for both architectures, plus a
-`SHA256SUMS` file. Each archive contains the executable, README, project license
+`SHA256SUMS` file. Each archive contains the executable, README, project license,
 documentation and notices for its Go dependencies. The binaries are not signed or notarized.
 
 Release builds require Go, Python 3 and nFPM 2.48.0. On Linux, checking the
