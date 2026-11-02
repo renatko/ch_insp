@@ -5,7 +5,8 @@ directory is the root of a source checkout.
 
 ## Connecting and offline mode
 
-Go 1.27.3 or newer is required. Build the executable with `go build -o ch_insp .`, or run the project directly with `go run .`.
+Go 1.27.3 or newer is required when building from source or using `go run`.
+Prebuilt releases do not require Go. Build the executable with `go build .`, or run the project directly with `go run .`.
 
 To inspect an existing SQL schema dump without connecting to ClickHouse, pass a local SQL file:
 

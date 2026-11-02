@@ -26,7 +26,7 @@ sudo dnf install ./ch_insp_VERSION_amd64.rpm   # Fedora / RHEL
 Replace `VERSION` and `amd64` with the downloaded version and architecture.
 These are standalone packages; updates require downloading a new release.
 
-Once the package repositories are published, install on macOS or Linux with Homebrew:
+Install on macOS or Linux with Homebrew:
 
 ```sh
 brew install renatko/tap/ch-insp
@@ -47,8 +47,12 @@ To build from source, install Go 1.27.3 or newer:
 ```sh
 git clone https://github.com/renatko/ch_insp.git
 cd ch_insp
-go build -o ch_insp .
+go build .
 ```
+
+Run the resulting binary as `./ch_insp` on macOS/Linux or `.\ch_insp.exe` in
+PowerShell, or put it on your `PATH` to use the commands below. Go is not
+required for prebuilt releases.
 
 ## Quick start
 
@@ -56,18 +60,35 @@ Connect to ClickHouse using a URL or command-line options:
 
 ```sh
 export CLICKHOUSE_URL='clickhouse://default@localhost:9000/demo'
-./ch_insp
+ch_insp
 ```
 
-Or pass connection options explicitly:
+Or pass connection options explicitly, including a password if required:
 
 ```sh
-./ch_insp --host localhost --port 9000 --user default --database demo
+ch_insp --host localhost --port 9000 --user default --password 'YOUR_PASSWORD' --database demo
 ```
 
-For credentials, prefer the environment variable over command-line arguments, which may be visible in process listings and shell history. See [connection options](docs/usage.md#connecting-and-offline-mode) for TLS, precedence and defaults.
+For a password-protected connection, include credentials in `CLICKHOUSE_URL`:
 
-To explore a local SQL dump without a ClickHouse server, use `./ch_insp --schema /path/to/schema.sql`. From a source checkout, you can try the included example:
+```sh
+export CLICKHOUSE_URL='clickhouse://user:password@localhost:9000/demo'
+ch_insp
+```
+
+Percent-encode special characters in the username and password. You can also
+pass `--password` as shown above, but command-line arguments may be visible in
+process listings. Avoid entering real credentials directly into shell history. See
+[connection options](docs/usage.md#connecting-and-offline-mode) for TLS,
+precedence and defaults.
+
+On Windows PowerShell, set the URL with
+`$env:CLICKHOUSE_URL = 'clickhouse://default@localhost:9000/demo'` and run
+`ch_insp`. If you extracted an archive without adding it to `PATH`, run the
+binary from its directory as `./ch_insp` on macOS/Linux or `.\ch_insp.exe` on
+Windows.
+
+To explore a local SQL dump without a ClickHouse server, use `ch_insp --schema /path/to/schema.sql`. From a source checkout, you can try the included example:
 
 ```sh
 go run . --schema ./demo/schema.sql
