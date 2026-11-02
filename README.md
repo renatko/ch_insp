@@ -63,10 +63,10 @@ export CLICKHOUSE_URL='clickhouse://default@localhost:9000/demo'
 ch_insp
 ```
 
-Or pass connection options explicitly:
+Or pass connection options explicitly, including a password if required:
 
 ```sh
-ch_insp --host localhost --port 9000 --user default --database demo
+ch_insp --host localhost --port 9000 --user default --password 'YOUR_PASSWORD' --database demo
 ```
 
 For a password-protected connection, include credentials in `CLICKHOUSE_URL`:
@@ -77,8 +77,8 @@ ch_insp
 ```
 
 Percent-encode special characters in the username and password. You can also
-pass `--password`, but command-line arguments may be visible in process
-listings. Avoid entering real credentials directly into shell history. See
+pass `--password` as shown above, but command-line arguments may be visible in
+process listings. Avoid entering real credentials directly into shell history. See
 [connection options](docs/usage.md#connecting-and-offline-mode) for TLS,
 precedence and defaults.
 
