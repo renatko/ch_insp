@@ -41,6 +41,12 @@ type columnsLoadedMsg struct {
 	err      error
 }
 
+type impactLoadedMsg struct {
+	request  uint64
+	revision int
+	result   clickhouse.ImpactResult
+}
+
 type model struct {
 	modalInner                     bool
 	dsn                            string
@@ -96,6 +102,13 @@ type model struct {
 	dependencyReturnScreen         string
 	dependencyReturnTargetExplicit string
 	dependencyMessage              string
+	impact                         bool
+	impactBackTarget               bool
+	impactLoading                  bool
+	impactColumn                   string
+	impactResult                   clickhouse.ImpactResult
+	impactFilter                   string
+	impactFiltering                bool
 	failuresMode                   bool
 	failuresReturnScreen           string
 	failuresLoading                bool
@@ -424,6 +437,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.columnsLoading, m.columnsData, m.columnsError = false, msg.data, msg.err
 			m.columnsCancel = nil
 		}
+	case impactLoadedMsg:
+		if m.impact && msg.request == m.columnsRequest && msg.revision == m.viewRevision {
+			m.impactLoading, m.impactResult = false, msg.result
+			m.columnsCancel = nil
+		}
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
@@ -576,6 +594,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "g":
 			if !m.loading && m.err == nil {
 				m.openDependencies()
+			}
+			return m, nil
+		case "i":
+			if m.target && !m.targetLoading && m.targetError == nil && len(m.targetData.Columns) > 0 && m.targetColumn >= 0 && m.targetColumn < len(m.targetData.Columns) {
+				table := m.targetData.Database + "." + m.targetData.Table
+				column := m.targetData.Columns[m.targetColumn].Name
+				m.target = false
+				m.dependencies = true
+				m.dependencyTable = table
+				m.impactBackTarget = true
+				cmd := m.startImpact(column)
+				return m, cmd
 			}
 			return m, nil
 		case "/":
@@ -1120,9 +1150,13 @@ func (m model) detailFooter(height int) string {
 	case m.columns:
 		footer = "[esc] back  [d] SQL  [PgUp]/[PgDn] scroll  [←]/[→] horizontal"
 	case m.target:
-		footer = "[esc] back  [↑]/[↓] column  [g] dependencies  [PgUp]/[PgDn] scroll"
+		footer = "[esc] back  [↑]/[↓] column  [i] impact  [g] dependencies  [PgUp]/[PgDn] scroll"
 	case m.dependencies:
-		footer = "[esc] back  [enter] open  [t] columns  [backspace] previous"
+		if m.impact {
+			footer = "[esc] back  [enter] open MV  [/] filter  [←]/[→] scroll"
+		} else {
+			footer = "[esc] back  [enter] open  [i] impact  [t] columns  [backspace] previous"
+		}
 	case m.failuresMode:
 		footer = "[esc] back  [enter] message  [w] window  [PgUp]/[PgDn] scroll"
 	}

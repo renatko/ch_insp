@@ -62,6 +62,12 @@ func (m model) breadcrumb() string {
 		parts = append(parts, "Dependencies")
 		parts = append(parts, m.dependencyHistory...)
 		parts = append(parts, m.dependencyTable)
+		if m.impact {
+			parts = append(parts, "Impact")
+			if m.impactColumn != "" {
+				parts = append(parts, m.impactColumn)
+			}
+		}
 	case m.target:
 		if m.targetReturnDependencies {
 			parts = append(parts, "Dependencies")

@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	parser "github.com/AfterShip/clickhouse-sql-parser/parser"
@@ -621,6 +622,78 @@ func collectScopeReads(root *lineageScope, metadata map[string][]tableColumn) []
 			if rel.derived != nil {
 				visit(rel.derived)
 			}
+		}
+	}
+	visit(root)
+	return result
+}
+
+// collectConditions preserves the role and expression behind non-output reads.
+func collectConditions(root *lineageScope, metadata map[string][]tableColumn) []ColumnCondition {
+	var result []ColumnCondition
+	seen := map[*lineageScope]bool{}
+	var visit func(*lineageScope)
+	visit = func(scope *lineageScope) {
+		if scope == nil || scope.query == nil || seen[scope] {
+			return
+		}
+		seen[scope] = true
+		add := func(kind string, expr parser.Expr) {
+			if expr != nil {
+				result = append(result, ColumnCondition{Clause: kind, Expression: expr.String(), Inputs: resolveExpression(expr, scope, metadata, map[string]bool{})})
+			}
+		}
+		q := scope.query
+		if q.Prewhere != nil {
+			add("PREWHERE", q.Prewhere)
+		}
+		if q.Where != nil {
+			add("WHERE", q.Where)
+		}
+		if q.GroupBy != nil {
+			add("GROUP BY", q.GroupBy)
+		}
+		if q.Having != nil {
+			add("HAVING", q.Having)
+		}
+		if q.OrderBy != nil {
+			add("ORDER BY", q.OrderBy)
+		}
+		if q.Window != nil {
+			add("WINDOW", q.Window)
+		}
+		if q.LimitBy != nil {
+			add("LIMIT BY", q.LimitBy)
+		}
+		if q.ArrayJoin != nil {
+			add("ARRAY JOIN", q.ArrayJoin)
+		}
+		var join func(parser.Expr)
+		join = func(expr parser.Expr) {
+			if j, ok := expr.(*parser.JoinExpr); ok && j != nil {
+				if j.Constraints != nil {
+					add("JOIN", j.Constraints)
+				}
+				join(j.Right)
+			}
+		}
+		if q.From != nil {
+			join(q.From.Expr)
+		}
+		for _, rel := range scope.relations {
+			if rel.derived != nil {
+				visit(rel.derived)
+			}
+		}
+		var subqueries []*lineageScope
+		for _, sub := range scope.scalars {
+			if sub != nil && sub.query != nil {
+				subqueries = append(subqueries, sub)
+			}
+		}
+		sort.SliceStable(subqueries, func(i, j int) bool { return subqueries[i].query.String() < subqueries[j].query.String() })
+		for _, sub := range subqueries {
+			visit(sub)
 		}
 	}
 	visit(root)
