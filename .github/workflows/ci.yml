@@ -48,7 +48,7 @@ jobs:
           exec docker compose -f "$GITHUB_WORKSPACE/demo/compose.yaml" exec -T -e TZ=UTC standalone clickhouse "$@"
           EOF
           chmod +x "$RUNNER_TEMP/chinspector-bin/clickhouse"
-          PATH="$RUNNER_TEMP/chinspector-bin:$PATH" go test -count=1 -run '^(TestHistoryQueriesWithClickHouseLocal|TestHistoryQueryDistinguishesZeroFromNoEvent|TestRateQueriesExcludeFutureAndOldEvents|TestViewStatusQueryWithClickHouseLocal)$' ./internal/clickhouse
+          PATH="$RUNNER_TEMP/chinspector-bin:$PATH" go test -count=1 -run '^(TestHistoryQueriesWithClickHouseLocal|TestHistoryQueryDistinguishesZeroFromNoEvent|TestRateQueriesExcludeFutureAndOldEvents|TestViewStatusQueryWithClickHouseLocal|TestViewExecutionsQueryWithClickHouseLocal|TestFlowDiagnosticsQueriesWithClickHouseLocal)$' ./internal/clickhouse
       - name: Build demo TUI
         run: docker compose -f demo/compose.yaml --profile tui build tui
       - name: Open demo TUI

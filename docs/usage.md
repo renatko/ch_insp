@@ -83,6 +83,19 @@ batches and have the same local-node and log-delay limits described above.
 
 Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. For a flow with multiple inputs, choose the desired table from the list. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
 
+From the overview or an MV's data flow, press `x` for the most recent 50
+observed successful or failed MV executions. Use Up/Down and Enter to inspect
+an event; failures retain the original exception. Press `w` to change the
+history window between 24 hours, 1 hour and 7 days, independently of the
+overview error window. Press `a` for flow diagnostics, or switch between the
+two with `x` and `a`; `r` refreshes the open screen and Esc returns.
+Diagnostics show source and target `NewPart` events and MV execution events
+over the last five minutes on the connected node. The two logs are independent;
+their counts cannot be compared to calculate missing inserts. Results can be
+partial or unavailable because of permissions, engine type or logging settings.
+No observed events do not establish inactivity. In offline mode only the
+inferred flow and visible target writers are available; execution logs are not.
+
 From table dependencies, press `i` for downstream table impact across multiple
 MV steps. To inspect a column, press `t` in dependencies, select the column and
 press `i` (or select a column from a target table). Impact uses all accessible
@@ -132,6 +145,7 @@ inspect or change the complete selection.
 - `/`: search visible sources, MVs and targets
 - `f`: edit source and target table filters
 - `e`: inspect recent MV errors; `w`: change their observation window
+- `x`: inspect MV execution history; `a`: diagnose the selected flow
 - `g`: inspect inferred table dependencies
 - `i`: analyze table impact from dependencies, or selected column impact from a table's column view
 - `t`: inspect the selected MV target table

@@ -8,7 +8,8 @@ A read-only terminal UI for exploring ClickHouse materialized views and the data
 
 - Visualize source tables → materialized views → target tables, including shared targets and multiple inputs.
 - Search and filter flows; inspect table and column impact, target columns, column lineage and SQL definitions.
-- Observe local-node read/write rates, recent history and materialized-view errors when ClickHouse logs are available.
+- Observe local-node read/write rates, execution history and materialized-view errors when ClickHouse logs are available.
+- Diagnose a flow using independent source, view and target observations.
 - Switch between discovered cluster nodes, or inspect a SQL schema dump offline without a server.
 
 ## Install
@@ -116,6 +117,7 @@ The demo provides a standalone server and a two-replica cluster with synthetic t
 | `f` / `/` | Filter or search flows |
 | `t` / `g` | Inspect a target or table dependencies |
 | `i` | Analyze downstream impact from dependencies or a selected table column |
+| `x` / `a` | Inspect MV executions or diagnose the selected flow |
 | `c` / `d` | Open column flow or SQL from the MV detail |
 | `e` / `w` | Inspect observed MV errors / change error window |
 | `p` / `s` | Change chart period / scale |

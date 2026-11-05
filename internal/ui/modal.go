@@ -55,6 +55,10 @@ func (m model) breadcrumb() string {
 		parts = append(parts, "Filters")
 	case m.searching:
 		parts = append(parts, "Search")
+	case m.observationMode == "executions":
+		parts = append(parts, "Executions")
+	case m.observationMode == "diagnostics":
+		parts = append(parts, "Diagnostics")
 	case m.dependencies:
 		if m.dependencyReturnScreen == "target" {
 			parts = append(parts, "Target")
