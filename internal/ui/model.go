@@ -41,6 +41,12 @@ type columnsLoadedMsg struct {
 	err      error
 }
 
+type impactLoadedMsg struct {
+	request  uint64
+	revision int
+	result   clickhouse.ImpactResult
+}
+
 type model struct {
 	modalInner                     bool
 	dsn                            string
@@ -96,6 +102,22 @@ type model struct {
 	dependencyReturnScreen         string
 	dependencyReturnTargetExplicit string
 	dependencyMessage              string
+	impact                         bool
+	impactBackTarget               bool
+	impactLoading                  bool
+	impactColumn                   string
+	impactResult                   clickhouse.ImpactResult
+	impactFilter                   string
+	impactFiltering                bool
+	observationMode                string
+	observationReturnOverview      bool
+	observationLoading             bool
+	observationError               error
+	observationExecutions          []clickhouse.ViewExecution
+	observationDiagnostics         clickhouse.FlowDiagnostics
+	observationSelected            int
+	observationDetail              bool
+	observationWindow              int
 	failuresMode                   bool
 	failuresReturnScreen           string
 	failuresLoading                bool
@@ -263,6 +285,7 @@ func (m *model) cancelColumns() {
 	m.columnsLoading = false
 	m.targetLoading = false
 	m.failuresLoading = false
+	m.observationLoading = false
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -424,6 +447,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.columnsLoading, m.columnsData, m.columnsError = false, msg.data, msg.err
 			m.columnsCancel = nil
 		}
+	case impactLoadedMsg:
+		if m.impact && msg.request == m.columnsRequest && msg.revision == m.viewRevision {
+			m.impactLoading, m.impactResult = false, msg.result
+			m.columnsCancel = nil
+		}
+	case observationLoadedMsg:
+		if m.observationMode == msg.mode && msg.request == m.columnsRequest && msg.revision == m.viewRevision && len(m.views) > 0 && msg.key == m.views[m.selected].Database+"\x00"+m.views[m.selected].Name {
+			m.observationLoading, m.observationError = false, msg.err
+			m.observationExecutions, m.observationDiagnostics = msg.executions, msg.diagnostics
+			m.columnsCancel = nil
+		}
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
@@ -484,6 +518,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.choosingDependency {
 			return m.updateDependencyPicker(msg)
 		}
+		if m.observationMode != "" {
+			if next, cmd, handled := m.updateObservationKey(msg); handled {
+				return next, cmd
+			}
+		}
 		if !m.filtering && !m.choosingDatabase {
 			if next, cmd, handled := m.updateDependencyKey(msg); handled {
 				return next, cmd
@@ -531,6 +570,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
+		case "x", "a":
+			if m.loading || m.err != nil || len(m.views) == 0 || m.dependencies || m.target || m.columns || m.definition || m.failuresMode {
+				return m, nil
+			}
+			m.observationReturnOverview = m.overview
+			m.observationWindow = m.statusWindow
+			m.overview = false
+			mode := "executions"
+			if msg.String() == "a" {
+				mode = "diagnostics"
+			}
+			cmd := m.loadObservation(mode)
+			return m, cmd
 		case "n":
 			if m.schemaPath != "" {
 				m.choosingNode = true
@@ -576,6 +628,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "g":
 			if !m.loading && m.err == nil {
 				m.openDependencies()
+			}
+			return m, nil
+		case "i":
+			if m.target && !m.targetLoading && m.targetError == nil && len(m.targetData.Columns) > 0 && m.targetColumn >= 0 && m.targetColumn < len(m.targetData.Columns) {
+				table := m.targetData.Database + "." + m.targetData.Table
+				column := m.targetData.Columns[m.targetColumn].Name
+				m.target = false
+				m.dependencies = true
+				m.dependencyTable = table
+				m.impactBackTarget = true
+				cmd := m.startImpact(column)
+				return m, cmd
 			}
 			return m, nil
 		case "/":
@@ -1113,16 +1177,24 @@ func (m model) renderView() string {
 }
 
 func (m model) detailFooter(height int) string {
-	footer := "[esc] back  [g] graph  [e] errors  [t] target  [c] columns  [d] SQL  [o] overview"
+	footer := "[esc] back  [o] overview  [x] runs  [a] diagnose  [g] graph  [e] errors  [t] target  [c] columns  [d] SQL"
 	switch {
+	case m.observationMode == "executions":
+		footer = "[esc] back  [enter] details  [w] window  [r] refresh  [a] diagnostics"
+	case m.observationMode == "diagnostics":
+		footer = "[esc] back  [r] refresh  [x] executions  [PgUp]/[PgDn] scroll"
 	case m.definition:
 		footer = "[esc] back  [v] original/formatted  [PgUp]/[PgDn] scroll  [←]/[→] horizontal"
 	case m.columns:
 		footer = "[esc] back  [d] SQL  [PgUp]/[PgDn] scroll  [←]/[→] horizontal"
 	case m.target:
-		footer = "[esc] back  [↑]/[↓] column  [g] dependencies  [PgUp]/[PgDn] scroll"
+		footer = "[esc] back  [↑]/[↓] column  [i] impact  [g] dependencies  [PgUp]/[PgDn] scroll"
 	case m.dependencies:
-		footer = "[esc] back  [enter] open  [t] columns  [backspace] previous"
+		if m.impact {
+			footer = "[esc] back  [enter] open MV  [/] filter  [←]/[→] scroll"
+		} else {
+			footer = "[esc] back  [enter] open  [i] impact  [t] columns  [backspace] previous"
+		}
 	case m.failuresMode:
 		footer = "[esc] back  [enter] message  [w] window  [PgUp]/[PgDn] scroll"
 	}
@@ -1323,7 +1395,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[enter] open  [f] filter  [/] search  [w] error window  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
+	footer := "[enter] open  [x] runs  [a] diagnose  [f] filter  [/] search  [w] error window  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
@@ -1356,7 +1428,9 @@ func (m model) renderDetail(width, height int) string {
 func (m model) detailLines() []string {
 	view := m.views[m.selected]
 	var lines []string
-	if m.dependencies {
+	if m.observationMode != "" {
+		return splitColumnLines(m.observationLines())
+	} else if m.dependencies {
 		lines := m.dependencyLines()
 		if m.dependencyMessage != "" {
 			lines = append(lines, errorStyle.Render(m.dependencyMessage))

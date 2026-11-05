@@ -14,6 +14,9 @@ type dependencyItem struct {
 }
 
 func (m model) dependencyItems() []dependencyItem {
+	if m.impact {
+		return m.impactItems()
+	}
 	views := m.allViews
 	if views == nil {
 		views = m.views
@@ -48,6 +51,9 @@ func (m model) dependencyItems() []dependencyItem {
 	return items
 }
 func (m model) dependencyLines() []string {
+	if m.impact {
+		return m.impactLines()
+	}
 	lines := []string{accentStyle.Render("TABLE DEPENDENCIES"), targetStyle.Render(m.dependencyTable), mutedStyle.Render("SQL-inferred · all visible schemas · may be incomplete"), ""}
 	items := m.dependencyItems()
 	if len(items) == 0 {
@@ -64,7 +70,7 @@ func (m model) dependencyLines() []string {
 		}
 		lines = append(lines, line)
 	}
-	return append(lines, "", mutedStyle.Render("[↑]/[↓] select · [enter] open · [t] columns · [backspace] previous · [g]/[esc] back"))
+	return append(lines, "", mutedStyle.Render("[↑]/[↓] select · [enter] open · [i] impact · [t] columns · [backspace] previous · [g]/[esc] back"))
 }
 func (m *model) openDependencies() {
 	if len(m.views) == 0 {
@@ -133,7 +139,51 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 	items := m.dependencyItems()
+	if m.impact {
+		if m.impactFiltering {
+			switch msg.String() {
+			case "esc", "enter":
+				m.impactFiltering = false
+			case "ctrl+c":
+				m.cancelColumns()
+				return m, tea.Quit, true
+			case "backspace":
+				runes := []rune(m.impactFilter)
+				if len(runes) > 0 {
+					m.impactFilter = string(runes[:len(runes)-1])
+				}
+			case "ctrl+x":
+				m.impactFilter = ""
+			default:
+				if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+					m.impactFilter += string(msg.Runes)
+				}
+			}
+			m.dependencyCursor, m.lineOffset = 0, 0
+			return m, nil, true
+		}
+		switch msg.String() {
+		case "/", "f":
+			m.impactFiltering = true
+			return m, nil, true
+		case "esc", "i", "g":
+			m.cancelColumns()
+			m.columnsRequest++
+			m.impact, m.impactLoading = false, false
+			m.lineOffset, m.columnOffset, m.dependencyCursor = 0, 0, 0
+			if m.impactBackTarget {
+				m.impactBackTarget, m.dependencies, m.target = false, false, true
+			}
+			return m, nil, true
+		case "t", "backspace":
+			return m, nil, true
+		}
+	}
 	switch msg.String() {
+	case "i":
+		m.impactBackTarget = false
+		cmd := m.startImpact("")
+		return m, cmd, true
 	case "g", "esc":
 		m.dependencies = false
 		if m.dependencyReturnTarget {
@@ -218,6 +268,7 @@ func (m model) updateDependencyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				if v.Database == item.view.Database && v.Name == item.view.Name {
 					m.selected = i
 					m.dependencies = false
+					m.impact = false
 					m.lineOffset = 0
 					m.metricsReady = false
 					m.metricsBusy = true

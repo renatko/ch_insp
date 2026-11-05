@@ -27,6 +27,19 @@ replica part downloads. Target totals include all observed writers.
 
 The overview and MV detail show observed execution status on the connected node. Press `w` to switch the error window between 24 hours, 1 hour and 7 days; press `e` to inspect up to 50 logged MV errors, then Enter to open the full ClickHouse message. A missing success or error is only an observation within that window: logging may be disabled, sampled or delayed. Query failures are shown separately.
 
+Press `x` from the overview or MV flow for up to 50 recent terminal execution
+events from `system.query_views_log`. Successful events show their logged
+duration and read/written rows; failed events show the error and query ID in
+details. The history's `[w]` window is independent of the overview error window.
+Press `a` for diagnostics: source and target observations count successful
+`NewPart` events and rows in `system.part_log`, while MV successes and failures
+come independently from `system.query_views_log`, all for the last five minutes
+on the connected node. Target counts include all writers, and the displayed MV
+writer list includes only visible definitions. These event counts are not a
+per-insert trace and cannot establish lost rows. Missing events may reflect
+disabled, sampled or delayed logging. Errors and unsupported engines are shown
+separately; offline mode has no log observations.
+
 ## Log requirements
 
 Both system logs must be configured and readable by the user. View logging

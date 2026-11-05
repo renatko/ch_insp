@@ -19,8 +19,14 @@ type ColumnLineage struct {
 	GroupBy         string
 	Having          string
 	AdditionalReads []string
+	Conditions      []ColumnCondition
 	TargetExtras    []string
 	Warnings        []string
+}
+
+type ColumnCondition struct {
+	Clause, Expression string
+	Inputs             []string
 }
 
 type ColumnMapping struct {
@@ -454,6 +460,7 @@ func analyzeColumns(view View, plan lineagePlan, metadata map[string][]tableColu
 		add(output, expression, resolveExpression(item.Expr, plan.scope, metadata, map[string]bool{}), nameKnown)
 	}
 	out.AdditionalReads = collectScopeReads(plan.scope, metadata)
+	out.Conditions = collectConditions(plan.scope, metadata)
 	sort.Strings(out.AdditionalReads)
 	for _, col := range targetColumns {
 		if seenOutput[col.Name] {

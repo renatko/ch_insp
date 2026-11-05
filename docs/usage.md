@@ -83,6 +83,39 @@ batches and have the same local-node and log-delay limits described above.
 
 Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. For a flow with multiple inputs, choose the desired table from the list. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
 
+From the overview or an MV's data flow, press `x` for the most recent 50
+observed successful or failed MV executions. Use Up/Down and Enter to inspect
+an event; failures retain the original exception. Press `w` to change the
+history window between 24 hours, 1 hour and 7 days, independently of the
+overview error window. Press `a` for flow diagnostics, or switch between the
+two with `x` and `a`; `r` refreshes the open screen and Esc returns.
+Diagnostics show source and target `NewPart` events and MV execution events
+over the last five minutes on the connected node. The two logs are independent;
+their counts cannot be compared to calculate missing inserts. Results can be
+partial or unavailable because of permissions, engine type or logging settings.
+No observed events do not establish inactivity. In offline mode only the
+inferred flow and visible target writers are available; execution logs are not.
+
+From table dependencies, press `i` for downstream table impact across multiple
+MV steps. To inspect a column, press `t` in dependencies, select the column and
+press `i` (or select a column from a target table). Impact uses all accessible
+views, independently of overview filters. Select an MV row and press Enter to
+open it; `/` or `f` filters the paths, and
+Esc returns to the previous screen. While filtering, Enter or Esc exits editing
+and Ctrl+X clears the text. Paths are inferred from SQL, not
+observed writes. A source is marked as an inferred trigger, another query input,
+or an input whose trigger is unknown. Cycles and analysis limits are marked.
+
+Column impact follows SELECT outputs into target columns matched by name. It
+also shows references in JOIN, WHERE, PREWHERE, GROUP BY, HAVING and other
+conditions; these can affect the whole result, so downstream table paths are
+marked as potential rather than mapped to individual columns. Ambiguous or
+unsupported SQL, missing permissions or metadata, inaccessible views and
+incomplete SQL dumps can hide relationships. Inspect the warnings and original
+definitions; no result does not establish that a change is safe. Analysis is
+read-only and also works with `--schema`; it stops after 64 analyzed views,
+500 result rows or a 45-second timeout and reports when results are incomplete.
+
 Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters. Press `Ctrl+X` in search to clear active filters while keeping the search query.
 
 Press `f` to filter views by source and/or target tables. The lists are built
@@ -112,7 +145,9 @@ inspect or change the complete selection.
 - `/`: search visible sources, MVs and targets
 - `f`: edit source and target table filters
 - `e`: inspect recent MV errors; `w`: change their observation window
+- `x`: inspect MV execution history; `a`: diagnose the selected flow
 - `g`: inspect inferred table dependencies
+- `i`: analyze table impact from dependencies, or selected column impact from a table's column view
 - `t`: inspect the selected MV target table
 - `n`: select a discovered native TCP node
 - `p`: change chart interval; `s`: switch overview chart scale
