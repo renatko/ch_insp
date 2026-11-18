@@ -115,6 +115,7 @@ The demo provides a standalone server and a two-replica cluster with synthetic t
 | `Enter` | Open the selected MV or target |
 | `f` / `/` | Filter or search flows |
 | `t` / `g` | Inspect a target or table dependencies |
+| `O` | Browse Distributed tables and dictionaries |
 | `c` / `d` | Open column flow or SQL from the MV detail |
 | `e` / `w` | Inspect observed MV errors / change error window |
 | `p` / `s` | Change chart period / scale |

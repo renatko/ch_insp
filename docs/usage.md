@@ -58,11 +58,11 @@ can reference another database, so identical short names can represent different
 tables. The SQL definition remains unchanged and shows the full references.
 
 The diagram recognizes simple table references after `FROM` and `JOIN` and a
-target after `TO` in the stored SQL. Complex expressions, table functions,
+target from server metadata when available, otherwise after `TO` in the stored SQL. If the metadata and explicit SQL target disagree, the dependency view reports the mismatch. Complex expressions, table functions,
 aliases and other SQL constructs may not be resolved completely. Sources are
 query inputs, not necessarily insert triggers: for incremental materialized
 views a joined table does not trigger the view when it receives inserts. The diagram marks the leftmost physical input of a supported incremental MV, including simple CTEs and subqueries as `[trigger]` and other query inputs as `[input]`; unsupported or refreshable definitions show `trigger unknown`. These roles are inferred from SQL. A
-view without `TO` uses internal storage. Check the SQL definition with `d`. The SQL viewer adds line breaks to parser-supported definitions; press `v` to switch between formatted and original text. Unsupported definitions are shown as originally received. Formatting never changes or executes the definition.
+view without `TO` uses internal storage; newer servers may identify that internal table in metadata. Check the SQL definition with `d`. The SQL viewer adds line breaks to parser-supported definitions; press `v` to switch between formatted and original text. Unsupported definitions are shown as originally received. Formatting never changes or executes the definition.
 
 ## Overview, search and filters
 
@@ -82,6 +82,8 @@ Select an MV with `↑` / `↓` and press `Enter` to open its diagram. Press `�
 batches and have the same local-node and log-delay limits described above.
 
 Press `g` to inspect the selected source table’s inferred incoming and outgoing dependencies, or the selected target when target focus is active. For a flow with multiple inputs, choose the desired table from the list. Navigate to connected tables or MVs with Enter, press `t` for the current table’s column view, and go back through tables with Backspace. Dependencies use the visible catalog across schemas and can be incomplete. Opening an MV outside the active filter switches to its database and clears the filter.
+
+The dependency view also shows configured Distributed routing and Dictionary sources when they touch the selected table. These are configuration relationships, not observed writes or proof that a remote table exists on the connected node. Distributed targets are resolved only for simple engine arguments; other expressions remain unresolved. ClickHouse Dictionary sources are linked only when a simple localhost host, database and table are specified. Other sources remain external or unresolved. Source definitions may contain credentials, so the relationship view does not show them. In offline mode the same limited inference uses the supplied DDL; unsupported dictionary names or engine expressions may be skipped. Press `O` to choose any discovered Dictionary or Distributed object, including disconnected objects; they do not appear as independent overview rows.
 
 Press `/` to search visible sources, MVs and targets. Use ↑/↓ and Enter to jump to a match, or Esc to cancel; the search respects active filters. Press `Ctrl+X` in search to clear active filters while keeping the search query.
 
@@ -112,7 +114,8 @@ inspect or change the complete selection.
 - `/`: search visible sources, MVs and targets
 - `f`: edit source and target table filters
 - `e`: inspect recent MV errors; `w`: change their observation window
-- `g`: inspect inferred table dependencies
+- `g`: inspect table dependencies
+- `O`: browse Distributed tables and dictionaries
 - `t`: inspect the selected MV target table
 - `n`: select a discovered native TCP node
 - `p`: change chart interval; `s`: switch overview chart scale

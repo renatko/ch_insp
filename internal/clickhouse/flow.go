@@ -9,9 +9,10 @@ import (
 
 // Flow describes relationships inferred from a CREATE MATERIALIZED VIEW query.
 type Flow struct {
-	Sources []string
-	Target  string
-	Trigger string // inferred only for supported incremental views
+	Sources       []string
+	Target        string
+	Trigger       string // inferred only for supported incremental views
+	TargetWarning string
 }
 
 // InferFlow recognizes simple table references. Complex SQL remains visible in
@@ -22,6 +23,18 @@ var flowCache = struct {
 }{entries: make(map[[32]byte]Flow)}
 
 func InferFlow(view View) Flow {
+	flow := inferCachedFlow(view)
+	if view.TargetDatabase != "" && view.TargetTable != "" {
+		target := view.TargetDatabase + "." + view.TargetTable
+		if flow.Target != target && flow.Target != "unknown target" && flow.Target != "internal storage (no TO)" {
+			flow.TargetWarning = "Server target differs from SQL-inferred target: " + flow.Target
+		}
+		flow.Target = target
+	}
+	return flow
+}
+
+func inferCachedFlow(view View) Flow {
 	key := sha256.Sum256([]byte(view.Database + "\x00" + view.Definition))
 	flowCache.Lock()
 	cached, ok := flowCache.entries[key]

@@ -11,10 +11,12 @@ import (
 
 // View contains the metadata needed to inspect a ClickHouse materialized view.
 type View struct {
-	Database   string
-	Name       string
-	Engine     string
-	Definition string
+	Database       string
+	Name           string
+	Engine         string
+	Definition     string
+	TargetDatabase string
+	TargetTable    string
 }
 
 type Catalog struct {
@@ -23,6 +25,7 @@ type Catalog struct {
 	Node            string
 	ServerVersion   string
 	Views           []View
+	Relations       []SchemaRelation
 }
 
 // LoadCatalog performs read-only discovery of databases and materialized views.
@@ -68,8 +71,16 @@ func loadCatalog(ctx context.Context, dsn string) (Catalog, error) {
 		return catalog, fmt.Errorf("read databases: %w", err)
 	}
 
+	var targetColumns uint64
+	if err := db.QueryRowContext(ctx, `SELECT count() FROM system.columns WHERE database = 'system' AND table = 'tables' AND name IN ('target_database', 'target_table')`).Scan(&targetColumns); err != nil {
+		return catalog, fmt.Errorf("discover materialized view target metadata: %w", err)
+	}
+	targetSelect := "'' AS target_database, '' AS target_table"
+	if targetColumns == 2 {
+		targetSelect = "target_database, target_table"
+	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT database, name, engine_full, create_table_query
+		SELECT database, name, engine_full, create_table_query, `+targetSelect+`
 		FROM system.tables
 		WHERE engine = 'MaterializedView'
 		  AND database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
@@ -82,13 +93,31 @@ func loadCatalog(ctx context.Context, dsn string) (Catalog, error) {
 
 	for rows.Next() {
 		var view View
-		if err := rows.Scan(&view.Database, &view.Name, &view.Engine, &view.Definition); err != nil {
+		if err := rows.Scan(&view.Database, &view.Name, &view.Engine, &view.Definition, &view.TargetDatabase, &view.TargetTable); err != nil {
 			return catalog, fmt.Errorf("read materialized view metadata: %w", err)
 		}
 		catalog.Views = append(catalog.Views, view)
 	}
 	if err := rows.Err(); err != nil {
 		return catalog, fmt.Errorf("read materialized view metadata: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return catalog, fmt.Errorf("read materialized view metadata: %w", err)
+	}
+	relationRows, err := db.QueryContext(ctx, `SELECT database, name, engine, engine_full, create_table_query FROM system.tables WHERE engine IN ('Distributed', 'Dictionary') AND database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')`)
+	if err != nil {
+		return catalog, fmt.Errorf("discover schema relations: %w", err)
+	}
+	defer relationRows.Close()
+	for relationRows.Next() {
+		var database, name, engine, engineFull, definition string
+		if err := relationRows.Scan(&database, &name, &engine, &engineFull, &definition); err != nil {
+			return catalog, fmt.Errorf("read schema relations: %w", err)
+		}
+		catalog.Relations = append(catalog.Relations, ParseSchemaRelation(database, name, engine, engineFull, definition))
+	}
+	if err := relationRows.Err(); err != nil {
+		return catalog, fmt.Errorf("read schema relations: %w", err)
 	}
 	return catalog, nil
 }

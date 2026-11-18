@@ -42,6 +42,14 @@ func LoadSQLDump(path, initialDatabase string) (*SQLDump, error) {
 	databases := map[string]bool{}
 	seenTables, seenViews := map[string]bool{}, map[string]bool{}
 	for i, statement := range statements {
+		// Dictionaries are not represented by the dump parser; only retain
+		// sanitized relationship metadata, never the source credentials.
+		if match := dictionaryCreate.FindStringSubmatch(statement); len(match) > 0 {
+			db, name := dictionaryName(match[1], database)
+			databases[db] = true
+			out.Catalog.Relations = append(out.Catalog.Relations, ParseSchemaRelation(db, name, "Dictionary", "", statement))
+			continue
+		}
 		stmts, parseErr := parseDumpStatement(statement)
 		if parseErr != nil {
 			out.Warnings = append(out.Warnings, fmt.Sprintf("Statement %d: %v", i+1, parseErr))
@@ -67,6 +75,9 @@ func LoadSQLDump(path, initialDatabase string) (*SQLDump, error) {
 			}
 			table := tableFromIdentifier(v.Name, database)
 			databases[table.Database] = true
+			if match := distributedEngine.FindStringSubmatch(statement); len(match) > 0 {
+				out.Catalog.Relations = append(out.Catalog.Relations, ParseSchemaRelation(table.Database, table.Name, "Distributed", match[1], statement))
+			}
 			if seenTables[table.key()] {
 				out.Warnings = append(out.Warnings, fmt.Sprintf("%s: duplicate table definition skipped", table.key()))
 				continue

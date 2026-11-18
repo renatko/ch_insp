@@ -62,6 +62,7 @@ type model struct {
 	nodeDetails                    bool
 	nodeDetailsOffset              int
 	allViews                       []clickhouse.View
+	schemaRelations                []clickhouse.SchemaRelation
 	choosingDatabase               bool
 	databaseCursor                 int
 	filtering                      bool
@@ -298,6 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dump = msg.dump
 			}
 			m.databases, m.allViews = msg.catalog.Databases, msg.catalog.Views
+			m.schemaRelations = msg.catalog.Relations
 			m.nodeName = msg.catalog.Node
 			m.nodeVersion = msg.catalog.ServerVersion
 			if !contains(m.databases, m.database) {
@@ -356,6 +358,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.nodeVersion = msg.catalog.ServerVersion
 			m.databases = msg.catalog.Databases
 			m.allViews = msg.catalog.Views
+			m.schemaRelations = msg.catalog.Relations
 			if !contains(m.databases, m.database) {
 				m.database = msg.catalog.CurrentDatabase
 			}
@@ -573,6 +576,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s":
 			m.chartCommon = !m.chartCommon
+		case "O":
+			if !m.loading && m.err == nil {
+				m.openSchemaObjects()
+			}
+			return m, nil
 		case "g":
 			if !m.loading && m.err == nil {
 				m.openDependencies()
@@ -1323,7 +1331,7 @@ func (m model) renderOverview(width int) string {
 	if m.height > 0 {
 		padding = maxInt(0, visible-len(content))
 	}
-	footer := "[enter] open  [f] filter  [/] search  [w] error window  [n] node  [p] period  [s] scale  [g] graph  [e] errors  [o] back  [t] target  [q] quit"
+	footer := "[enter] open  [f] filter  [/] search  [w] error window  [n] node  [p] period  [s] scale  [g] graph  [O] objects  [e] errors  [o] back  [t] target  [q] quit"
 	result := append(header, content...)
 	for i := 0; i < padding; i++ {
 		result = append(result, "")
