@@ -1,0 +1,3 @@
+<clickhouse>
+  <remote_servers><demo_cluster><shard><replica><host>standalone</host><port>9000</port></replica></shard></demo_cluster></remote_servers>
+</clickhouse>

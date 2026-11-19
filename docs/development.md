@@ -78,7 +78,13 @@ python3 -m venv /tmp/chinspector-recording-venv
 /tmp/chinspector-recording-venv/bin/python scripts/record_demo.py
 ```
 
-The script writes `docs/assets/demo.gif` and leaves the demo running. If `agg`
+Record the Distributed and Dictionary tour with:
+
+```sh
+/tmp/chinspector-recording-venv/bin/python scripts/record_demo.py --schema-relations --output docs/assets/schema-relations.gif
+```
+
+The default script writes `docs/assets/demo.gif` and leaves the demo running. If `agg`
 is not on `PATH`, pass `--agg /path/to/agg`. Use `--port` for a non-default
 standalone demo port, `--font-family` to select a different installed monospace font,
 or `--output` to write elsewhere. The script connects as the demo's default

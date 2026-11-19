@@ -22,6 +22,10 @@ docker compose -f demo/compose.yaml --profile tui run --build --rm tui
 
 The flow overview opens at startup. Press `n`, select a `demo_cluster` node and press `v` to survey both replicas. The cluster's native ports are also available on the host at `localhost:19101` and `localhost:19102`; when the TUI runs on the host, the Docker-internal node names are not normally resolvable, so use the containerized TUI for node switching and cluster surveys.
 
+![Browsing Distributed and Dictionary relationships](assets/schema-relations.gif)
+
+Press `O` to browse `page_views_distributed` and `segments_dict`. The Distributed table routes page views to `page_views` via `demo_cluster`; the traffic generator writes some page views through it. The dictionary loads the local `segments` lookup table. Open either object and press Enter on its connected table to explore related materialized views.
+
 The `demo` database has 16 materialized views with branching and shared targets:
 
 - `page_views`, `purchases`, `refunds` and `heartbeat` feed the shared `activity` table. `page_views_mv` also joins the `segments` lookup table.

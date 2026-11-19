@@ -20,6 +20,10 @@ CREATE TABLE demo.page_metrics (`event_time` DateTime, `page` String, `views` UI
 
 CREATE TABLE demo.page_views (`event_time` DateTime, `user_id` UInt32, `page` String) ENGINE = MergeTree ORDER BY (event_time, user_id) TTL event_time + toIntervalDay(1) SETTINGS index_granularity = 8192;
 
+CREATE TABLE demo.page_views_distributed (`event_time` DateTime, `user_id` UInt32, `page` String) ENGINE = Distributed('demo_cluster', 'demo', 'page_views', user_id);
+
+CREATE DICTIONARY demo.segments_dict (user_id UInt32, segment String) PRIMARY KEY user_id SOURCE(CLICKHOUSE(HOST 'localhost' PORT 9000 USER 'default' DB 'demo' TABLE 'segments')) LAYOUT(HASHED()) LIFETIME(60);
+
 CREATE TABLE demo.purchases (`event_time` DateTime, `user_id` UInt32, `amount` Float64) ENGINE = MergeTree ORDER BY (event_time, user_id) TTL event_time + toIntervalDay(1) SETTINGS index_granularity = 8192;
 
 CREATE TABLE demo.refunds (`event_time` DateTime, `user_id` UInt32, `amount` Float64) ENGINE = MergeTree ORDER BY (event_time, user_id) TTL event_time + toIntervalDay(1) SETTINGS index_granularity = 8192;

@@ -16,6 +16,10 @@ for node in standalone replica1 replica2; do
   [[ $(query "$node" "SELECT count() = 16 FROM system.tables WHERE database = 'demo' AND engine = 'MaterializedView'") == 1 ]]
   [[ $(query "$node" 'SELECT count() > 0 FROM demo.activity') == 1 ]]
   [[ $(query "$node" 'SELECT count() > 0 FROM demo.daily_activity') == 1 ]]
+  [[ $(query "$node" "SELECT count() = 1 FROM system.tables WHERE database = 'demo' AND name = 'page_views_distributed' AND engine = 'Distributed'") == 1 ]]
+  [[ $(query "$node" "SELECT count() = 1 FROM system.tables WHERE database = 'demo' AND name = 'segments_dict' AND engine = 'Dictionary'") == 1 ]]
+  [[ $(query "$node" "SELECT dictGetString('demo.segments_dict', 'segment', toUInt64(1))") == new ]]
+  [[ $(query "$node" 'SELECT count() > 0 FROM demo.page_views_distributed') == 1 ]]
   [[ $(query "$node" 'SELECT count() = 0 FROM demo.heartbeat') == 1 ]]
   [[ $(query "$node" "SELECT count() > 0 FROM demo.activity WHERE kind = 'heartbeat'") == 1 ]]
   for table in customer_ledger value_alerts page_metrics audit_events revenue_daily audit_summary ledger_hourly; do
