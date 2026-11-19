@@ -88,8 +88,11 @@ func TestDemoSchemaDump(t *testing.T) {
 	if len(dump.Warnings) != 0 {
 		t.Fatalf("demo dump warnings: %v", dump.Warnings)
 	}
-	if len(dump.Catalog.Views) != 16 || len(dump.columns) != 14 {
+	if len(dump.Catalog.Views) != 16 || len(dump.columns) != 15 {
 		t.Fatalf("unexpected demo schema: %d views, %d tables", len(dump.Catalog.Views), len(dump.columns))
+	}
+	if len(dump.Catalog.Relations) != 2 {
+		t.Fatalf("expected two schema relations, got %#v", dump.Catalog.Relations)
 	}
 	for _, view := range dump.Catalog.Views {
 		if _, err := dump.ColumnLineage(view); err != nil {

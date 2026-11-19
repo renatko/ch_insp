@@ -18,6 +18,7 @@ services:
       - "127.0.0.1:${DEMO_STANDALONE_PORT:-19100}:9000"
     volumes:
       - ./config/logs.xml:/etc/clickhouse-server/config.d/demo-logs.xml:ro
+      - ./config/standalone-cluster.xml:/etc/clickhouse-server/config.d/demo-cluster.xml:ro
       - ./config/users.xml:/etc/clickhouse-server/users.d/demo-users.xml:ro
   replica1:
     <<: *server

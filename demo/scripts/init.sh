@@ -32,6 +32,8 @@ for host in standalone replica1 replica2; do
     query "$host" "CREATE TABLE IF NOT EXISTS demo.$table ($columns) ENGINE = $engine ORDER BY $order TTL event_time + INTERVAL 1 DAY DELETE"
   done
   query "$host" 'CREATE TABLE IF NOT EXISTS demo.segments (user_id UInt32, segment String) ENGINE = MergeTree ORDER BY user_id'
+  query "$host" "CREATE TABLE IF NOT EXISTS demo.page_views_distributed AS demo.page_views ENGINE = Distributed('demo_cluster', 'demo', 'page_views', user_id)"
+  query "$host" "CREATE DICTIONARY IF NOT EXISTS demo.segments_dict (user_id UInt32, segment String) PRIMARY KEY user_id SOURCE(CLICKHOUSE(HOST 'localhost' PORT 9000 USER 'default' DB 'demo' TABLE 'segments')) LAYOUT(HASHED()) LIFETIME(60)"
   query "$host" 'CREATE TABLE IF NOT EXISTS demo.heartbeat (event_time DateTime, user_id UInt32, origin String) ENGINE = Null'
   query "$host" "INSERT INTO demo.segments SELECT number + 1, if(number % 2 = 0, 'new', 'returning') FROM numbers(100) WHERE NOT EXISTS (SELECT 1 FROM demo.segments LIMIT 1)"
   query "$host" "CREATE MATERIALIZED VIEW IF NOT EXISTS demo.page_views_mv TO demo.activity AS SELECT p.event_time AS event_time, p.user_id AS user_id, 'view' AS kind, toFloat64(0) AS amount, s.segment AS segment FROM demo.page_views AS p LEFT JOIN demo.segments AS s ON p.user_id = s.user_id"

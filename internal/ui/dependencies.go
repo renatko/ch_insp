@@ -5,6 +5,7 @@ import (
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"sort"
 	"strings"
 )
 
@@ -26,6 +27,9 @@ func (m model) dependencyItems() []dependencyItem {
 			v := d.View
 			items = append(items, dependencyItem{label: "← MV " + name + " writes to table", view: &v})
 			flow := clickhouse.InferFlow(d.View)
+			if flow.TargetWarning != "" {
+				items = append(items, dependencyItem{label: "    ! " + flow.TargetWarning})
+			}
 			for _, source := range flow.Sources {
 				role := "input; trigger unknown"
 				if flow.Trigger != "" {
@@ -40,15 +44,34 @@ func (m model) dependencyItems() []dependencyItem {
 		} else {
 			v := d.View
 			items = append(items, dependencyItem{label: "→ MV " + name + " reads (" + d.Role + ")", view: &v})
+			if warning := clickhouse.InferFlow(d.View).TargetWarning; warning != "" {
+				items = append(items, dependencyItem{label: "    ! " + warning})
+			}
 			if d.Other != "" && d.Other != "unknown target" && d.Other != "internal storage (no TO)" {
 				items = append(items, dependencyItem{label: "    → table " + d.Other, table: d.Other})
 			}
 		}
 	}
+	for _, r := range m.schemaRelations {
+		name := r.Database + "." + r.Name
+		if name == m.dependencyTable {
+			label := "→ " + r.Kind + ": " + r.Detail
+			if r.Other != "" {
+				label += " → " + r.Other
+			}
+			items = append(items, dependencyItem{label: label, table: r.Other})
+		} else if r.Other == m.dependencyTable {
+			label := "← " + r.Kind + " " + name + " (" + r.Detail + ")"
+			if r.Kind == "Dictionary" {
+				label = "→ Dictionary " + name + " loads from this table (" + r.Detail + ")"
+			}
+			items = append(items, dependencyItem{label: label, table: name})
+		}
+	}
 	return items
 }
 func (m model) dependencyLines() []string {
-	lines := []string{accentStyle.Render("TABLE DEPENDENCIES"), targetStyle.Render(m.dependencyTable), mutedStyle.Render("SQL-inferred · all visible schemas · may be incomplete"), ""}
+	lines := []string{accentStyle.Render("TABLE DEPENDENCIES"), targetStyle.Render(m.dependencyTable), mutedStyle.Render("Configured and SQL-inferred · may be incomplete"), ""}
 	items := m.dependencyItems()
 	if len(items) == 0 {
 		lines = append(lines, emptyText("No visible inferred relationships."))
@@ -66,6 +89,28 @@ func (m model) dependencyLines() []string {
 	}
 	return append(lines, "", mutedStyle.Render("[↑]/[↓] select · [enter] open · [t] columns · [backspace] previous · [g]/[esc] back"))
 }
+
+// openSchemaObjects also makes disconnected dictionaries and Distributed tables
+// reachable when the current database contains no materialized views.
+func (m *model) openSchemaObjects() {
+	seen := map[string]bool{}
+	var names []string
+	for _, r := range m.schemaRelations {
+		name := r.Database + "." + r.Name
+		if !seen[name] {
+			names = append(names, name)
+			seen[name] = true
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return
+	}
+	m.dependencyChoices = names
+	m.dependencyChoice = 0
+	m.choosingDependency = true
+}
+
 func (m *model) openDependencies() {
 	if len(m.views) == 0 {
 		return
@@ -254,7 +299,7 @@ func (m model) dependencyPickerStart() int {
 	return maxInt(0, m.dependencyChoice-m.dependencyPickerVisible()+1)
 }
 func (m model) renderDependencyPicker(width int) string {
-	lines := []string{accentStyle.Render("SELECT TABLE"), mutedStyle.Render("Choose an input or target to inspect dependencies."), ""}
+	lines := []string{accentStyle.Render("SELECT TABLE"), mutedStyle.Render("Choose a table or object to inspect dependencies."), ""}
 	shortCounts := map[string]int{}
 	for _, name := range m.dependencyChoices {
 		shortCounts[shortName(name)]++
